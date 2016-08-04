@@ -267,10 +267,10 @@ define void @local_sextload_v16i16_to_v16i32(<16 x i32> addrspace(3)* %out, <16 
 
 ; FUNC-LABEL: {{^}}local_zextload_v32i16_to_v32i32:
 ; GCN-DAG: ds_read2_b64 v{{\[[0-9]+:[0-9]+\]}}, v{{[0-9]+}} offset1:1{{$}}
-; GCN-DAG: ds_read2_b64 v{{\[[0-9]+:[0-9]+\]}}, v{{[0-9]+}} offset0:2 offset1:3
+; GCN-DAG: ds_read2_b64 v{{\[[0-9]+:[0-9]+\]}}, v{{[0-9]+}} offset0:2 offset1:6
 ; GCN-DAG: ds_read2_b64 v{{\[[0-9]+:[0-9]+\]}}, v{{[0-9]+}} offset0:4 offset1:5
-; GCN-DAG: ds_read2_b64 v{{\[[0-9]+:[0-9]+\]}}, v{{[0-9]+}} offset0:6 offset1:7
-define void @local_zextload_v32i16_to_v32i32(<32 x i32> addrspace(3)* %out, <32 x i16> addrspace(3)* %in) #0 {
+; GCN-DAG: ds_read2_b64 v{{\[[0-9]+:[0-9]+\]}}, v{{[0-9]+}} offset0:7 offset1:3
+define void @local_zextload_v32i16_to_v32i32(<32 x i32> addrspace(3)* %out, <32 x i16> addrspace(3)* %in) #1 {
   %load = load <32 x i16>, <32 x i16> addrspace(3)* %in
   %ext = zext <32 x i16> %load to <32 x i32>
   store <32 x i32> %ext, <32 x i32> addrspace(3)* %out
@@ -282,25 +282,23 @@ define void @local_zextload_v32i16_to_v32i32(<32 x i32> addrspace(3)* %out, <32 
 ; GCN-DAG: ds_read2_b64 v{{\[[0-9]+:[0-9]+\]}}, v{{[0-9]+}} offset0:3 offset1:4
 ; GCN-DAG: ds_read2_b64 v{{\[[0-9]+:[0-9]+\]}}, v{{[0-9]+}} offset0:5{{$}}
 ; GCN-DAG: ds_read2_b64 v{{\[[0-9]+:[0-9]+\]}}, v{{[0-9]+}} offset0:6 offset1:7
-define void @local_sextload_v32i16_to_v32i32(<32 x i32> addrspace(3)* %out, <32 x i16> addrspace(3)* %in) #0 {
+define void @local_sextload_v32i16_to_v32i32(<32 x i32> addrspace(3)* %out, <32 x i16> addrspace(3)* %in) #1 {
   %load = load <32 x i16>, <32 x i16> addrspace(3)* %in
   %ext = sext <32 x i16> %load to <32 x i32>
   store <32 x i32> %ext, <32 x i32> addrspace(3)* %out
   ret void
 }
 
-; FIXME: Missed read2
 ; FUNC-LABEL: {{^}}local_zextload_v64i16_to_v64i32:
-; GCN-DAG: ds_read2_b64 v{{\[[0-9]+:[0-9]+\]}}, v{{[0-9]+}} offset0:11 offset1:15
+; GCN-DAG: ds_read2_b64 v{{\[[0-9]+:[0-9]+\]}}, v{{[0-9]+}} offset0:15 offset1:12
 ; GCN-DAG: ds_read2_b64 v{{\[[0-9]+:[0-9]+\]}}, v{{[0-9]+}} offset1:1{{$}}
 ; GCN-DAG: ds_read2_b64 v{{\[[0-9]+:[0-9]+\]}}, v{{[0-9]+}} offset0:2 offset1:3
 ; GCN-DAG: ds_read2_b64 v{{\[[0-9]+:[0-9]+\]}}, v{{[0-9]+}} offset0:4 offset1:5
 ; GCN-DAG: ds_read2_b64 v{{\[[0-9]+:[0-9]+\]}}, v{{[0-9]+}} offset0:6 offset1:7
-; GCN-DAG: ds_read_b64 v{{\[[0-9]+:[0-9]+\]}}, v{{[0-9]+}} offset:64
-; GCN-DAG: ds_read2_b64 v{{\[[0-9]+:[0-9]+\]}}, v{{[0-9]+}} offset0:9 offset1:10
-; GCN-DAG: ds_read2_b64 v{{\[[0-9]+:[0-9]+\]}}, v{{[0-9]+}} offset0:12 offset1:13
-; GCN-DAG: ds_read_b64 v{{\[[0-9]+:[0-9]+\]}}, v{{[0-9]+}} offset:112
-define void @local_zextload_v64i16_to_v64i32(<64 x i32> addrspace(3)* %out, <64 x i16> addrspace(3)* %in) #0 {
+; GCN-DAG: ds_read2_b64 v{{\[[0-9]+:[0-9]+\]}}, v{{[0-9]+}} offset0:8 offset1:9
+; GCN-DAG: ds_read2_b64 v{{\[[0-9]+:[0-9]+\]}}, v{{[0-9]+}} offset0:10 offset1:11
+; GCN-DAG: ds_read2_b64 v{{\[[0-9]+:[0-9]+\]}}, v{{[0-9]+}} offset0:13 offset1:14
+define void @local_zextload_v64i16_to_v64i32(<64 x i32> addrspace(3)* %out, <64 x i16> addrspace(3)* %in) #1 {
   %load = load <64 x i16>, <64 x i16> addrspace(3)* %in
   %ext = zext <64 x i16> %load to <64 x i32>
   store <64 x i32> %ext, <64 x i32> addrspace(3)* %out
@@ -452,3 +450,4 @@ define void @local_sextload_v32i16_to_v32i64(<32 x i64> addrspace(3)* %out, <32 
 ; }
 
 attributes #0 = { nounwind }
+attributes #1 = { nounwind "target-features"="-promote-alloca" "amdgpu-num-active-waves-per-eu"="2" }

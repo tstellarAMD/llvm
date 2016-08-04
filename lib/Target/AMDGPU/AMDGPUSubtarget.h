@@ -263,14 +263,6 @@ public:
     return EnableXNACK;
   }
 
-  unsigned getMaxWavesPerCU() const {
-    if (getGeneration() >= AMDGPUSubtarget::SOUTHERN_ISLANDS)
-      return 10;
-
-    // FIXME: Not sure what this is for other subtagets.
-    return 8;
-  }
-
   /// \brief Returns the offset in bytes from the start of the input buffer
   ///        of the first explicit kernel argument.
   unsigned getExplicitKernelArgOffset() const {
@@ -289,6 +281,106 @@ public:
   bool enableSubRegLiveness() const override {
     return true;
   }
+
+  /// \returns Number of execution units per compute unit supported by the
+  /// subtarget.
+  unsigned getNumEUsPerCU() const {
+    return 4;
+  }
+
+  /// \returns Maximum number of work groups per compute unit supported by the
+  /// subtarget and limited by given flat work group size.
+  unsigned getMaxNumWorkGroupsPerCU(unsigned FlatWorkGroupSize) const {
+    if (getGeneration() < AMDGPUSubtarget::SOUTHERN_ISLANDS)
+      return 8;
+    return getNumWavesPerWorkGroup(FlatWorkGroupSize) == 1 ? 40 : 16;
+  }
+
+  /// \returns Maximum number of active waves per compute unit supported by the
+  /// subtarget without any kind of limitation.
+  unsigned getMaxNumActiveWavesPerCU() const {
+    return getMaxNumActiveWavesPerEU() * getNumEUsPerCU();
+  }
+
+  /// \returns Maximum number of active waves per compute unit supported by the
+  /// subtarget and limited by given flat work group size.
+  unsigned getMaxNumActiveWavesPerCU(unsigned FlatWorkGroupSize) const {
+    unsigned NumWavesPerWorkGroup =
+      getNumWavesPerWorkGroup(FlatWorkGroupSize);
+    unsigned MaxNumWorkGroupsPerCU =
+      getMaxNumWorkGroupsPerCU(FlatWorkGroupSize);
+    unsigned MaxNumActiveWavesPerCU =
+      NumWavesPerWorkGroup * MaxNumWorkGroupsPerCU;
+    MaxNumActiveWavesPerCU =
+      std::min(MaxNumActiveWavesPerCU, getMaxNumActiveWavesPerCU());
+    MaxNumActiveWavesPerCU =
+      alignDown(MaxNumActiveWavesPerCU, NumWavesPerWorkGroup);
+    MaxNumActiveWavesPerCU = MaxNumActiveWavesPerCU / NumWavesPerWorkGroup;
+    MaxNumActiveWavesPerCU = MaxNumActiveWavesPerCU * NumWavesPerWorkGroup;
+    return MaxNumActiveWavesPerCU;
+  }
+
+  /// \returns Minimum number of active waves per execution unit supported by
+  /// the subtarget.
+  unsigned getMinNumActiveWavesPerEU() const {
+    return 1;
+  }
+
+  /// \returns Maximum number of active waves per execution unit supported by
+  /// the subtarget without any kind of limitation.
+  unsigned getMaxNumActiveWavesPerEU() const {
+    // FIXME: Not sure what this is for subtargets below Southern Islands.
+    if (getGeneration() < AMDGPUSubtarget::SOUTHERN_ISLANDS)
+      return 8;
+    // FIXME: Need to take scratch memory into account.
+    return 10;
+  }
+
+  /// \returns Maximum number of active waves per execution unit supported by
+  /// the subtarget and limited by given flat work group size.
+  unsigned getMaxNumActiveWavesPerEU(unsigned FlatWorkGroupSize) const {
+    unsigned MaxNumActiveWavesPerCU =
+      getMaxNumActiveWavesPerCU(FlatWorkGroupSize);
+    unsigned MaxNumActiveWavesPerEU =
+      alignDown(MaxNumActiveWavesPerCU, getNumEUsPerCU());
+    MaxNumActiveWavesPerEU = MaxNumActiveWavesPerEU / getNumEUsPerCU();
+    return MaxNumActiveWavesPerEU;
+  }
+
+  /// \returns Minimum flat work group size supported by the subtarget.
+  unsigned getMinFlatWorkGroupSize() const {
+    return 1;
+  }
+
+  /// \returns Maximum flat work group size supported by the subtarget.
+  unsigned getMaxFlatWorkGroupSize() const {
+    return 2048;
+  }
+
+  /// \returns Number of waves per work group given the flat work group size.
+  unsigned getNumWavesPerWorkGroup(unsigned FlatWorkGroupSize) const {
+    return alignTo(FlatWorkGroupSize, getWavefrontSize()) / getWavefrontSize();
+  }
+
+  /// \returns Subtarget's default pair of minimum/maximum flat work group sizes
+  /// for function \p F, or minimum/maximum flat work group sizes explicitly
+  /// requested using "amdgpu-flat-work-group-size" attribute attached to
+  /// function \p F.
+  ///
+  /// \returns Subtarget's default values if explicitly requested values cannot
+  /// be converted to integer, or violate subtarget's specifications.
+  std::pair<unsigned, unsigned> getFlatWorkGroupSizes(const Function &F) const;
+
+  /// \returns Subtarget's default pair of minimum/maximum number of active
+  /// waves per execution unit for function \p F, or minimum/maximum number of
+  /// active waves per execution unit explicitly requested using
+  /// "amdgpu-num-active-waves-per-eu" attribute attached to function \p F.
+  ///
+  /// \returns Subtarget's default values if explicitly requested values cannot
+  /// be converted to integer, violate subtarget's specifications, or are not
+  /// compatible with minimum/maximum number of active waves limited by flat
+  /// work group size, register usage, and/or lds usage.
+  std::pair<unsigned, unsigned> getNumActiveWavesPerEU(const Function &F) const;
 };
 
 class R600Subtarget final : public AMDGPUSubtarget {

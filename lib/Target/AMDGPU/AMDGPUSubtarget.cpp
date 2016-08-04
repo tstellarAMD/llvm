@@ -178,6 +178,82 @@ unsigned AMDGPUSubtarget::getOccupancyWithLocalMemSize(uint32_t Bytes) const {
   return 1;
 }
 
+std::pair<unsigned, unsigned> AMDGPUSubtarget::getFlatWorkGroupSizes(
+  const Function &F) const {
+
+  // Default minimum/maximum flat work group sizes.
+  std::pair<unsigned, unsigned> Default =
+    AMDGPU::isCompute(F.getCallingConv()) ?
+      std::pair<unsigned, unsigned>(128, 256) :
+      std::pair<unsigned, unsigned>(1, getWavefrontSize());
+
+  // Requested minimum/maximum flat work group sizes.
+  std::pair<unsigned, unsigned> Requested =
+    AMDGPU::getIntegerPairAttribute(F, "amdgpu-flat-work-group-size", Default);
+
+  // Make sure requested minimum is less than requested maximum.
+  if (Requested.first > Requested.second)
+    return Default;
+
+  // Make sure requested values do not violate subtarget's specifications.
+  if (Requested.first < getMinFlatWorkGroupSize())
+    return Default;
+  if (Requested.second > getMaxFlatWorkGroupSize())
+    return Default;
+
+  return Requested;
+}
+
+std::pair<unsigned, unsigned> AMDGPUSubtarget::getNumActiveWavesPerEU(
+  const Function &F) const {
+
+  // Default minimum/maximum number of active waves per execution unit.
+  std::pair<unsigned, unsigned> Default(1, 0);
+
+  // Default/requested minimum/maximum flat work group sizes.
+  std::pair<unsigned, unsigned> FlatWorkGroupSizes = getFlatWorkGroupSizes(F);
+
+  // If minimum/maximum flat work group sizes were explicitly requested using
+  // "amdgpu-flat-work-group-size" attribute, then set default minimum/maximum
+  // number of active waves per execution unit to values implied by requested
+  // minimum/maximum flat work group sizes.
+  unsigned ImpliedByMinFlatWorkGroupSize =
+    getMaxNumActiveWavesPerEU(FlatWorkGroupSizes.first);
+  unsigned ImpliedByMaxFlatWorkGroupSize =
+    getMaxNumActiveWavesPerEU(FlatWorkGroupSizes.second);
+  unsigned MinImpliedByFlatWorkGroupSize =
+    std::min(ImpliedByMinFlatWorkGroupSize, ImpliedByMaxFlatWorkGroupSize);
+  unsigned MaxImpliedByFlatWorkGroupSize =
+    std::max(ImpliedByMinFlatWorkGroupSize, ImpliedByMaxFlatWorkGroupSize);
+  if (F.hasFnAttribute("amdgpu-flat-work-group-size")) {
+    Default.first = MinImpliedByFlatWorkGroupSize;
+    Default.second = MaxImpliedByFlatWorkGroupSize;
+  }
+
+  // Requested minimum/maximum number of active waves per execution unit.
+  std::pair<unsigned, unsigned> Requested = AMDGPU::getIntegerPairAttribute(
+    F, "amdgpu-num-active-waves-per-eu", Default, true);
+
+  // Make sure requested minimum is less than requested maximum.
+  if (Requested.second && Requested.first > Requested.second)
+    return Default;
+
+  // Make sure requested values do not violate subtarget's specifications.
+  if (Requested.first < getMinNumActiveWavesPerEU() ||
+      Requested.first > getMaxNumActiveWavesPerEU())
+    return Default;
+  if (Requested.second > getMaxNumActiveWavesPerEU())
+    return Default;
+
+  // Make sure requested values are compatible with values implied by requested
+  // minimum/maximum flat work group sizes.
+  if (Requested.first > MinImpliedByFlatWorkGroupSize ||
+      Requested.second > MaxImpliedByFlatWorkGroupSize)
+    return Default;
+
+  return Requested;
+}
+
 R600Subtarget::R600Subtarget(const Triple &TT, StringRef GPU, StringRef FS,
                              const TargetMachine &TM) :
   AMDGPUSubtarget(TT, GPU, FS, TM),

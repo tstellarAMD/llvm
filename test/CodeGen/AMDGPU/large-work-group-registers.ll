@@ -1,6 +1,6 @@
 ; RUN: llc -march=amdgcn -mcpu=tonga -post-RA-scheduler=0 < %s | FileCheck %s
 
-; CHECK: NumVgprs: 64
+; CHECK: NumVgprs: 32
 define void @main([9 x <16 x i8>] addrspace(2)* byval, [17 x <16 x i8>] addrspace(2)* byval, [17 x <8 x i32>] addrspace(2)* byval, [16 x <8 x i32>] addrspace(2)* byval, [16 x <4 x i32>] addrspace(2)* byval, <3 x i32> inreg, <3 x i32> inreg, <3 x i32>) #0 {
 main_body:
   %8 = getelementptr [16 x <4 x i32>], [16 x <4 x i32>] addrspace(2)* %4, i64 0, i64 8
@@ -33,7 +33,7 @@ declare void @llvm.amdgcn.s.barrier() #1
 
 declare void @llvm.amdgcn.buffer.store.format.v4f32(<4 x float>, <4 x i32>, i32, i32, i1, i1) #2
 
-attributes #0 = { "amdgpu-max-work-group-size"="1024" }
+attributes #0 = { "amdgpu-flat-work-group-size"="1024,1024" }
 attributes #1 = { convergent nounwind }
 attributes #2 = { nounwind }
 

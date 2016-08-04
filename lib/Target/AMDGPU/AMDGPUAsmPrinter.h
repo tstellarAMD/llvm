@@ -40,6 +40,8 @@ private:
       NumVGPR(0),
       NumSGPR(0),
       FlatUsed(false),
+      NumSGPRsForNumActiveWavesPerEU(0),
+      NumVGPRsForNumActiveWavesPerEU(0),
       ReservedVGPRFirst(0),
       ReservedVGPRCount(0),
       DebuggerWavefrontPrivateSegmentOffsetSGPR((uint16_t)-1),
@@ -70,6 +72,14 @@ private:
     uint32_t NumSGPR;
     uint32_t LDSSize;
     bool FlatUsed;
+
+    // Number of SGPRs that meets number of active waves per execution unit
+    // request.
+    uint32_t NumSGPRsForNumActiveWavesPerEU;
+
+    // Number of VGPRs that meets number of active waves per execution unit
+    // request.
+    uint32_t NumVGPRsForNumActiveWavesPerEU;
 
     // If ReservedVGPRCount is 0 then must be 0. Otherwise, this is the first
     // fixed VGPR number reserved.

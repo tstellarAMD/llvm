@@ -176,14 +176,6 @@ public:
   unsigned getPreloadedValue(const MachineFunction &MF,
                              enum PreloadedValue Value) const;
 
-  /// \brief Give the maximum number of VGPRs that can be used by \p WaveCount
-  ///        concurrent waves.
-  unsigned getNumVGPRsAllowed(unsigned WaveCount) const;
-
-  /// \brief Give the maximum number of SGPRs that can be used by \p WaveCount
-  ///        concurrent waves.
-  unsigned getNumSGPRsAllowed(const SISubtarget &ST, unsigned WaveCount) const;
-
   unsigned findUnusedRegister(const MachineRegisterInfo &MRI,
                               const TargetRegisterClass *RC,
                               const MachineFunction &MF) const;
@@ -192,6 +184,74 @@ public:
   unsigned getVGPR32PressureSet() const { return VGPR32SetID; };
 
   bool isVGPR(const MachineRegisterInfo &MRI, unsigned Reg) const;
+
+  /// \returns SGPR allocation granularity supported by the subtarget.
+  unsigned getSGPRAllocGranule() const {
+    return 8;
+  }
+
+  /// \returns Total number of SGPRs supported by the subtarget.
+  unsigned getTotalNumSGPRs(const SISubtarget &ST) const;
+
+  /// \returns Addressable number of SGPRs supported by the subtarget.
+  unsigned getAddressableNumSGPRs(const SISubtarget &ST) const;
+
+  /// \returns Reserved number of SGPRs supported by the subtarget.
+  unsigned getReservedNumSGPRs(const SISubtarget &ST) const;
+
+  /// \returns Minimum number of SGPRs that meets given number of active waves
+  /// per execution unit requirement for given subtarget.
+  unsigned getMinNumSGPRs(const SISubtarget &ST,
+                          unsigned NumActiveWavesPerEU) const;
+
+  /// \returns Maximum number of SGPRs that meets given number of active waves
+  /// per execution unit requirement for given subtarget.
+  unsigned getMaxNumSGPRs(const SISubtarget &ST,
+                          unsigned NumActiveWavesPerEU) const;
+
+  /// \returns Maximum number of SGPRs that meets number of active waves per
+  /// execution unit requirement for function \p MF, or number of SGPRs
+  /// explicitly requested using "amdgpu-num-sgpr" attribute attached to
+  /// function \p MF.
+  ///
+  /// \returns Value that meets number of active waves per execution unit
+  /// requirement if explicitly requested value cannot be converted to integer,
+  /// violates subtarget's specifications, or does not meet number of active
+  /// waves per execution unit requirement.
+  unsigned getMaxNumSGPRs(const MachineFunction &MF) const;
+
+  /// \returns VGPR allocation granularity supported by the subtarget.
+  unsigned getVGPRAllocGranule() const {
+    return 4;
+  }
+
+  /// \returns Total number of VGPRs supported by the subtarget.
+  unsigned getTotalNumVGPRs() const {
+    return 256;
+  }
+
+  /// \returns Reserved number of VGPRs for debugger use supported by the
+  /// subtarget.
+  unsigned getDebuggerReservedNumVGPRs(const SISubtarget &ST) const;
+
+  /// \returns Minimum number of SGPRs that meets given number of active waves
+  /// per execution unit requirement.
+  unsigned getMinNumVGPRs(unsigned NumActiveWavesPerEU) const;
+
+  /// \returns Maximum number of VGPRs that meets given number of active waves
+  /// per execution unit requirement.
+  unsigned getMaxNumVGPRs(unsigned NumActiveWavesPerEU) const;
+
+  /// \returns Maximum number of VGPRs that meets number of active waves per
+  /// execution unit requirement for function \p MF, or number of VGPRs
+  /// explicitly requested using "amdgpu-num-vgpr" attribute attached to
+  /// function \p MF.
+  ///
+  /// \returns Value that meets number of active waves per execution unit
+  /// requirement if explicitly requested value cannot be converted to integer,
+  /// violates subtarget's specifications, or does not meet number of active
+  /// waves per execution unit requirement.
+  unsigned getMaxNumVGPRs(const MachineFunction &MF) const;
 
 private:
   void buildScratchLoadStore(MachineBasicBlock::iterator MI,
