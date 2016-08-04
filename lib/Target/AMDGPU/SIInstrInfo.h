@@ -167,6 +167,11 @@ public:
   areMemAccessesTriviallyDisjoint(MachineInstr &MIa, MachineInstr &MIb,
                                   AliasAnalysis *AA = nullptr) const override;
 
+  bool canFoldImmIntoMad(const MachineInstr &Mad, unsigned RegToReplace,
+                         const MachineOperand &ImmOp,
+                         const MachineRegisterInfo *MRI) const;
+
+  void foldImmediate(MachineInstr &UseMI, int FoldIdx, int64_t Imm) const;
   bool FoldImmediate(MachineInstr &UseMI, MachineInstr &DefMI, unsigned Reg,
                      MachineRegisterInfo *MRI) const final;
 

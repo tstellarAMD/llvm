@@ -1210,12 +1210,17 @@ static void removeModOperands(MachineInstr &MI) {
   MI.RemoveOperand(Src0ModIdx);
 }
 
-// TODO: Maybe this should be removed this and custom fold everything in
-// SIFoldOperands?
-bool SIInstrInfo::FoldImmediate(MachineInstr &UseMI, MachineInstr &DefMI,
-                                unsigned Reg, MachineRegisterInfo *MRI) const {
-  if (!MRI->hasOneNonDBGUse(Reg))
+bool SIInstrInfo::canFoldImmIntoMad(const MachineInstr &Mad,
+                                    unsigned RegToReplace,
+                                    const MachineOperand &ImmOp,
+                                    const MachineRegisterInfo *MRI) const {
+  // Don't fold if we are using source modifiers. The new VOP2 instructions
+  // don't have them.
+  if (hasModifiersSet(Mad, AMDGPU::OpName::src0_modifiers) ||
+      hasModifiersSet(Mad, AMDGPU::OpName::src1_modifiers) ||
+      hasModifiersSet(Mad, AMDGPU::OpName::src2_modifiers)) {
     return false;
+  }
 
   unsigned Opc = UseMI.getOpcode();
 
@@ -1247,114 +1252,140 @@ bool SIInstrInfo::FoldImmediate(MachineInstr &UseMI, MachineInstr &DefMI,
     return true;
   }
 
-  if (Opc == AMDGPU::V_MAD_F32 || Opc == AMDGPU::V_MAC_F32_e64) {
-    // Don't fold if we are using source modifiers. The new VOP2 instructions
-    // don't have them.
-    if (hasModifiersSet(UseMI, AMDGPU::OpName::src0_modifiers) ||
-        hasModifiersSet(UseMI, AMDGPU::OpName::src1_modifiers) ||
-        hasModifiersSet(UseMI, AMDGPU::OpName::src2_modifiers)) {
+  // If this is a free constant, there's no reason to do this.
+  // TODO: We could fold this here instead of letting SIFoldOperands do it
+  // later.
+  if (isInlineConstant(ImmOp, 4))
+    return false;
+
+  const MachineOperand *Src0 = getNamedOperand(Mad, AMDGPU::OpName::src0);
+  const MachineOperand *Src1 = getNamedOperand(Mad, AMDGPU::OpName::src1);
+  const MachineOperand *Src2 = getNamedOperand(Mad, AMDGPU::OpName::src2);
+
+  // Check if we can fold into the multiplied part is the constant for 
+  // v_madmk_f32. We should only expect these to be on src0 due to
+  // canonicalizations.
+  if (Src0->isReg() && Src0->getReg() == RegToReplace) {
+    if (!Src1->isReg() || RI.isSGPRClass(MRI->getRegClass(Src1->getReg())))
       return false;
-    }
 
-    const MachineOperand &ImmOp = DefMI.getOperand(1);
-
-    // If this is a free constant, there's no reason to do this.
-    // TODO: We could fold this here instead of letting SIFoldOperands do it
-    // later.
-    if (isInlineConstant(ImmOp, 4))
+    if (!Src2->isReg() || RI.isSGPRClass(MRI->getRegClass(Src2->getReg())))
       return false;
-
-    MachineOperand *Src0 = getNamedOperand(UseMI, AMDGPU::OpName::src0);
-    MachineOperand *Src1 = getNamedOperand(UseMI, AMDGPU::OpName::src1);
-    MachineOperand *Src2 = getNamedOperand(UseMI, AMDGPU::OpName::src2);
-
-    // Multiplied part is the constant: Use v_madmk_f32
-    // We should only expect these to be on src0 due to canonicalizations.
-    if (Src0->isReg() && Src0->getReg() == Reg) {
-      if (!Src1->isReg() || RI.isSGPRClass(MRI->getRegClass(Src1->getReg())))
-        return false;
-
-      if (!Src2->isReg() || RI.isSGPRClass(MRI->getRegClass(Src2->getReg())))
-        return false;
-
-      // We need to swap operands 0 and 1 since madmk constant is at operand 1.
-
-      const int64_t Imm = DefMI.getOperand(1).getImm();
-
-      // FIXME: This would be a lot easier if we could return a new instruction
-      // instead of having to modify in place.
-
-      // Remove these first since they are at the end.
-      UseMI.RemoveOperand(
-          AMDGPU::getNamedOperandIdx(Opc, AMDGPU::OpName::omod));
-      UseMI.RemoveOperand(
-          AMDGPU::getNamedOperandIdx(Opc, AMDGPU::OpName::clamp));
-
-      unsigned Src1Reg = Src1->getReg();
-      unsigned Src1SubReg = Src1->getSubReg();
-      Src0->setReg(Src1Reg);
-      Src0->setSubReg(Src1SubReg);
-      Src0->setIsKill(Src1->isKill());
-
-      if (Opc == AMDGPU::V_MAC_F32_e64) {
-        UseMI.untieRegOperand(
-            AMDGPU::getNamedOperandIdx(Opc, AMDGPU::OpName::src2));
-      }
-
-      Src1->ChangeToImmediate(Imm);
-
-      removeModOperands(UseMI);
-      UseMI.setDesc(get(AMDGPU::V_MADMK_F32));
-
-      bool DeleteDef = MRI->hasOneNonDBGUse(Reg);
-      if (DeleteDef)
-        DefMI.eraseFromParent();
-
-      return true;
-    }
-
-    // Added part is the constant: Use v_madak_f32
-    if (Src2->isReg() && Src2->getReg() == Reg) {
-      // Not allowed to use constant bus for another operand.
-      // We can however allow an inline immediate as src0.
-      if (!Src0->isImm() &&
-          (Src0->isReg() && RI.isSGPRClass(MRI->getRegClass(Src0->getReg()))))
-        return false;
-
-      if (!Src1->isReg() || RI.isSGPRClass(MRI->getRegClass(Src1->getReg())))
-        return false;
-
-      const int64_t Imm = DefMI.getOperand(1).getImm();
-
-      // FIXME: This would be a lot easier if we could return a new instruction
-      // instead of having to modify in place.
-
-      // Remove these first since they are at the end.
-      UseMI.RemoveOperand(
-          AMDGPU::getNamedOperandIdx(Opc, AMDGPU::OpName::omod));
-      UseMI.RemoveOperand(
-          AMDGPU::getNamedOperandIdx(Opc, AMDGPU::OpName::clamp));
-
-      if (Opc == AMDGPU::V_MAC_F32_e64) {
-        UseMI.untieRegOperand(
-            AMDGPU::getNamedOperandIdx(Opc, AMDGPU::OpName::src2));
-      }
-
-      // ChangingToImmediate adds Src2 back to the instruction.
-      Src2->ChangeToImmediate(Imm);
-
-      // These come before src2.
-      removeModOperands(UseMI);
-      UseMI.setDesc(get(AMDGPU::V_MADAK_F32));
-
-      bool DeleteDef = MRI->hasOneNonDBGUse(Reg);
-      if (DeleteDef)
-        DefMI.eraseFromParent();
-
-      return true;
-    }
+    return true;
   }
 
+  // Check if we can fold into the added part for v_madak_f32.
+  if (Src2->isReg() && Src2->getReg() == RegToReplace) {
+    // Not allowed to use constant bus for another operand.
+    // We can however allow an inline immediate as src0.
+    if (!Src0->isImm() &&
+        (Src0->isReg() && RI.isSGPRClass(MRI->getRegClass(Src0->getReg()))))
+      return false;
+
+    if (!Src1->isReg() || RI.isSGPRClass(MRI->getRegClass(Src1->getReg())))
+      return false;
+    return true;
+  }
+
+  return false;
+}
+                                      
+void SIInstrInfo::foldImmediate(MachineInstr &UseMI, int FoldIdx, 
+                                int64_t Imm) const {
+
+  unsigned Opc = UseMI.getOpcode();
+
+  if (Opc != AMDGPU::V_MAC_F32_e64 && Opc != AMDGPU::V_MAD_F32)
+    return;
+
+  MachineOperand *Src0 = getNamedOperand(UseMI, AMDGPU::OpName::src0);
+  MachineOperand *Src1 = getNamedOperand(UseMI, AMDGPU::OpName::src1);
+  MachineOperand *Src2 = getNamedOperand(UseMI, AMDGPU::OpName::src2);
+
+
+  // Multiplied part is the constant: Use v_madmk_f32
+  if (FoldIdx == AMDGPU::getNamedOperandIdx(Opc, AMDGPU::OpName::src0)) {
+    // We need to swap operands 0 and 1 since madmk constant is at operand 1.
+
+    // FIXME: This would be a lot easier if we could return a new instruction
+    // instead of having to modify in place.
+
+    // Remove these first since they are at the end.
+    UseMI.RemoveOperand(AMDGPU::getNamedOperandIdx(Opc, AMDGPU::OpName::omod));
+    UseMI.RemoveOperand(AMDGPU::getNamedOperandIdx(Opc, AMDGPU::OpName::clamp));
+
+    unsigned Src1Reg = Src1->getReg();
+    unsigned Src1SubReg = Src1->getSubReg();
+    Src0->setReg(Src1Reg);
+    Src0->setSubReg(Src1SubReg);
+    Src0->setIsKill(Src1->isKill());
+
+    if (Opc == AMDGPU::V_MAC_F32_e64) {
+      UseMI.untieRegOperand(
+          AMDGPU::getNamedOperandIdx(Opc, AMDGPU::OpName::src2));
+    }
+
+    Src1->ChangeToImmediate(Imm);
+
+    removeModOperands(UseMI);
+    UseMI.setDesc(get(AMDGPU::V_MADMK_F32));
+    return;
+  }
+
+  assert(FoldIdx == AMDGPU::getNamedOperandIdx(Opc, AMDGPU::OpName::src2));
+
+  // Added part is the constant: Use v_madak_f32
+
+  // FIXME: This would be a lot easier if we could return a new instruction
+  // instead of having to modify in place.
+
+  // Remove these first since they are at the end.
+  UseMI.RemoveOperand(AMDGPU::getNamedOperandIdx(Opc, AMDGPU::OpName::omod));
+  UseMI.RemoveOperand(AMDGPU::getNamedOperandIdx(Opc, AMDGPU::OpName::clamp));
+
+  if (Opc == AMDGPU::V_MAC_F32_e64) {
+    UseMI.untieRegOperand(
+        AMDGPU::getNamedOperandIdx(Opc, AMDGPU::OpName::src2));
+  }
+
+  // ChangingToImmediate adds Src2 back to the instruction.
+  Src2->ChangeToImmediate(Imm);
+
+  // These come before src2.
+  removeModOperands(UseMI);
+  UseMI.setDesc(get(AMDGPU::V_MADAK_F32));
+}
+
+// TODO: Maybe this should be removed this and custom fold everything in
+// SIFoldOperands?
+bool SIInstrInfo::FoldImmediate(MachineInstr &UseMI, MachineInstr &DefMI,
+                                unsigned Reg, MachineRegisterInfo *MRI) const {
+  if (!MRI->hasOneNonDBGUse(Reg))
+    return false;
+
+  unsigned Opc = UseMI.getOpcode();
+
+  if (Opc == AMDGPU::V_MAD_F32 || Opc == AMDGPU::V_MAC_F32_e64) {
+    const MachineOperand &ImmOp = DefMI.getOperand(1);
+
+    if (!canFoldImmIntoMad(UseMI, Reg, ImmOp, MRI))
+      return false;
+
+    unsigned FoldIdx;
+    unsigned Src0Idx = AMDGPU::getNamedOperandIdx(Opc, AMDGPU::OpName::src0);
+    unsigned Src2Idx = AMDGPU::getNamedOperandIdx(Opc, AMDGPU::OpName::src2);
+    if (UseMI.getOperand(Src0Idx).isReg() && UseMI.getOperand(Src0Idx).getReg() == Reg)
+      FoldIdx = Src0Idx;
+    else {
+      assert(UseMI.getOperand(Src2Idx).isReg() &&
+             UseMI.getOperand(Src2Idx).getReg() == Reg);
+      FoldIdx = Src2Idx;
+    }
+    foldImmediate(UseMI, FoldIdx, ImmOp.getImm());
+    if (MRI->hasOneNonDBGUse(Reg))
+      DefMI.eraseFromParent();
+    return true;
+  }
   return false;
 }
 
