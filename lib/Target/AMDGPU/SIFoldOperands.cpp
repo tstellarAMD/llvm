@@ -97,12 +97,18 @@ static bool isSafeToFold(unsigned Opcode) {
 }
 
 static bool updateOperand(FoldCandidate &Fold,
+                          const SIInstrInfo *TII,
                           const TargetRegisterInfo &TRI) {
   MachineInstr *MI = Fold.UseMI;
   MachineOperand &Old = MI->getOperand(Fold.UseOpNo);
   assert(Old.isReg());
 
   if (Fold.isImm()) {
+    if (MI->getOpcode() == AMDGPU::V_MAD_F32) {
+      TII->foldImmediate(*MI, Fold.UseOpNo, Fold.ImmToFold);
+      return true;
+    }
+
     Old.ChangeToImmediate(Fold.ImmToFold);
     return true;
   }
@@ -132,6 +138,7 @@ static bool tryAddToFoldList(std::vector<FoldCandidate> &FoldList,
                              MachineInstr *MI, unsigned OpNo,
                              MachineOperand *OpToFold,
                              const SIInstrInfo *TII) {
+  const MachineRegisterInfo &MRI = MI->getParent()->getParent()->getRegInfo();
   if (!TII->isOperandLegal(*MI, OpNo, OpToFold)) {
 
     // Special case for v_mac_f32_e64 if we are trying to fold into src2
@@ -154,6 +161,17 @@ static bool tryAddToFoldList(std::vector<FoldCandidate> &FoldList,
     // other fold illegal.
     if (isUseMIInFoldList(FoldList, MI))
       return false;
+
+    // Special case for v_mad_f32, we can fold non-inline immediates if
+    // we convert to madak/madmk.
+    if (Opc == AMDGPU::V_MAD_F32) {
+      if (!TII->canFoldImmIntoMad(*MI, MI->getOperand(OpNo).getReg(),
+                                  *OpToFold, &MRI)) {
+        return false;
+      }
+      FoldList.push_back(FoldCandidate(MI, OpNo, OpToFold));
+      return true;
+    }
 
     // Operand is not legal, so try to commute the instruction to
     // see if this makes it possible to fold.
@@ -366,7 +384,7 @@ bool SIFoldOperands::runOnMachineFunction(MachineFunction &MF) {
         Copy->addImplicitDefUseOperands(MF);
 
       for (FoldCandidate &Fold : FoldList) {
-        if (updateOperand(Fold, TRI)) {
+        if (updateOperand(Fold, TII, TRI)) {
           // Clear kill flags.
           if (!Fold.isImm()) {
             assert(Fold.OpToFold && Fold.OpToFold->isReg());
