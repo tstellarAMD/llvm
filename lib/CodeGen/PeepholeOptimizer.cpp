@@ -1613,8 +1613,16 @@ bool PeepholeOptimizer::runOnMachineFunction(MachineFunction &MF) {
         // next iteration sees the new instructions.
         MII = MI;
         ++MII;
-        if (SeenMoveImm)
-          Changed |= foldImmediate(MI, &MBB, ImmDefRegs, ImmDefMIs);
+        if (SeenMoveImm) {
+          bool Folded = foldImmediate(MI, &MBB, ImmDefRegs, ImmDefMIs);
+          Changed |= Folded;
+          if (Folded) {
+            // If folding the immediate made the current instruction a
+            // move immediate instruction, then add it to the ImmDefsMI
+            // list.
+            isMoveImmediate(MI, ImmDefRegs, ImmDefMIs);
+          }
+        }
       }
 
       // Check whether MI is a load candidate for folding into a later
