@@ -1218,6 +1218,35 @@ bool SIInstrInfo::FoldImmediate(MachineInstr &UseMI, MachineInstr &DefMI,
     return false;
 
   unsigned Opc = UseMI.getOpcode();
+
+  if (Opc == AMDGPU::COPY) {
+    const MachineOperand &ImmOp = DefMI.getOperand(1);
+    if (!ImmOp.isImm())
+      // TODO: Fold frame index operands.
+      return false;
+    bool isVGPRCopy = RI.isVGPR(*MRI, UseMI.getOperand(0).getReg());
+    switch (DefMI.getOpcode()) {
+    default:
+      return false;
+    case AMDGPU::V_MOV_B32_e64:
+      if (hasModifiersSet(DefMI, AMDGPU::OpName::src0_modifiers))
+        return false;
+    case AMDGPU::S_MOV_B64:
+      // TODO: We could fold 64-bit immediates, but this get compilicated
+      // when there are sub-registers.
+      return false;
+
+    case AMDGPU::V_MOV_B32_e32:
+    case AMDGPU::S_MOV_B32:
+      break;
+    }
+    unsigned NewOpc = isVGPRCopy ? AMDGPU::V_MOV_B32_e32 : AMDGPU::S_MOV_B32;
+    UseMI.setDesc(get(NewOpc));
+    UseMI.getOperand(1).ChangeToImmediate(ImmOp.getImm());
+    UseMI.addImplicitDefUseOperands(*UseMI.getParent()->getParent());
+    return true;
+  }
+
   if (Opc == AMDGPU::V_MAD_F32 || Opc == AMDGPU::V_MAC_F32_e64) {
     // Don't fold if we are using source modifiers. The new VOP2 instructions
     // don't have them.
