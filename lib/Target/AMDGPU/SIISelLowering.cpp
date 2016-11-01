@@ -2065,15 +2065,26 @@ void SITargetLowering::createDebuggerPrologueStackObjects(
   }
 }
 
+bool static isConstGVWithInit(const GlobalValue *GV) {
+  const GlobalVariable *GVar = dyn_cast<GlobalVariable>(GV);
+  return GVar &&
+         (GV->getType()->getAddressSpace() == AMDGPUAS::CONSTANT_ADDRESS ||
+          GVar->isConstant()) &&
+          GVar->hasDefinitiveInitializer() &&
+          GVar->hasUniqueInitializer();
+}
+
 bool SITargetLowering::shouldEmitFixup(const GlobalValue *GV) const {
   const Triple &TT = getTargetMachine().getTargetTriple();
-  return GV->getType()->getAddressSpace() == AMDGPUAS::CONSTANT_ADDRESS &&
+  return (isConstGVWithInit(GV) ||
+          GV->getType()->getAddressSpace() == AMDGPUAS::CONSTANT_ADDRESS) &&
          AMDGPU::shouldEmitConstantsToTextSection(TT);
 }
 
 bool SITargetLowering::shouldEmitGOTReloc(const GlobalValue *GV) const {
   return (GV->getType()->getAddressSpace() == AMDGPUAS::GLOBAL_ADDRESS ||
               GV->getType()->getAddressSpace() == AMDGPUAS::CONSTANT_ADDRESS) &&
+         !isConstGVWithInit(GV) &&
          !shouldEmitFixup(GV) &&
          !getTargetMachine().shouldAssumeDSOLocal(*GV->getParent(), GV);
 }
@@ -2407,7 +2418,9 @@ buildPCRelGlobalAddress(SelectionDAG &DAG, const GlobalValue *GV,
   SDValue PtrHi = DAG.getTargetGlobalAddress(GV, DL, MVT::i32, Offset + 4,
                                              GAFlags == SIInstrInfo::MO_NONE ?
                                              GAFlags : GAFlags + 1);
-  return DAG.getNode(AMDGPUISD::PC_ADD_REL_OFFSET, DL, PtrVT, PtrLo, PtrHi);
+  SDValue Ret = DAG.getNode(AMDGPUISD::PC_ADD_REL_OFFSET, DL, MVT::i64,
+                            PtrLo, PtrHi);
+  return DAG.getZExtOrTrunc(Ret, DL, PtrVT);
 }
 
 SDValue SITargetLowering::LowerGlobalAddress(AMDGPUMachineFunction *MFI,
@@ -2415,8 +2428,7 @@ SDValue SITargetLowering::LowerGlobalAddress(AMDGPUMachineFunction *MFI,
                                              SelectionDAG &DAG) const {
   GlobalAddressSDNode *GSD = cast<GlobalAddressSDNode>(Op);
 
-  if (GSD->getAddressSpace() != AMDGPUAS::CONSTANT_ADDRESS &&
-      GSD->getAddressSpace() != AMDGPUAS::GLOBAL_ADDRESS)
+  if (GSD->getAddressSpace() == AMDGPUAS::LOCAL_ADDRESS)
     return AMDGPUTargetLowering::LowerGlobalAddress(MFI, Op, DAG);
 
   SDLoc DL(GSD);
@@ -2428,20 +2440,23 @@ SDValue SITargetLowering::LowerGlobalAddress(AMDGPUMachineFunction *MFI,
   else if (shouldEmitPCReloc(GV))
     return buildPCRelGlobalAddress(DAG, GV, DL, GSD->getOffset(), PtrVT,
                                    SIInstrInfo::MO_REL32);
+  else if (shouldEmitGOTReloc(GV)) {
 
-  SDValue GOTAddr = buildPCRelGlobalAddress(DAG, GV, DL, 0, PtrVT,
-                                            SIInstrInfo::MO_GOTPCREL32);
+    SDValue GOTAddr = buildPCRelGlobalAddress(DAG, GV, DL, 0, PtrVT,
+                                              SIInstrInfo::MO_GOTPCREL32);
 
-  Type *Ty = PtrVT.getTypeForEVT(*DAG.getContext());
-  PointerType *PtrTy = PointerType::get(Ty, AMDGPUAS::CONSTANT_ADDRESS);
-  const DataLayout &DataLayout = DAG.getDataLayout();
-  unsigned Align = DataLayout.getABITypeAlignment(PtrTy);
-  // FIXME: Use a PseudoSourceValue once those can be assigned an address space.
-  MachinePointerInfo PtrInfo(UndefValue::get(PtrTy));
+    Type *Ty = PtrVT.getTypeForEVT(*DAG.getContext());
+    PointerType *PtrTy = PointerType::get(Ty, AMDGPUAS::CONSTANT_ADDRESS);
+    const DataLayout &DataLayout = DAG.getDataLayout();
+    unsigned Align = DataLayout.getABITypeAlignment(PtrTy);
+    // FIXME: Use a PseudoSourceValue once those can be assigned an address space.
+    MachinePointerInfo PtrInfo(UndefValue::get(PtrTy));
 
-  return DAG.getLoad(PtrVT, DL, DAG.getEntryNode(), GOTAddr, PtrInfo, Align,
-                     MachineMemOperand::MODereferenceable |
-                         MachineMemOperand::MOInvariant);
+    return DAG.getLoad(PtrVT, DL, DAG.getEntryNode(), GOTAddr, PtrInfo, Align,
+                       MachineMemOperand::MODereferenceable |
+                       MachineMemOperand::MOInvariant);
+  }
+  return AMDGPUTargetLowering::LowerGlobalAddress(MFI, Op, DAG);
 }
 
 SDValue SITargetLowering::copyToM0(SelectionDAG &DAG, SDValue Chain,
