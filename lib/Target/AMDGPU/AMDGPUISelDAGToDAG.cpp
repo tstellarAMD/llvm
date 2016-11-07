@@ -159,6 +159,7 @@ private:
                                  SDValue &Clamp,
                                  SDValue &Omod) const;
 
+  void selectToGEP(SDNode *N) const;
   void SelectADD_SUB_I64(SDNode *N);
   void SelectUADDO_USUBO(SDNode *N);
   void SelectDIV_SCALE(SDNode *N);
@@ -479,7 +480,27 @@ void AMDGPUDAGToDAGISel::Select(SDNode *N) {
                                           N->getValueType(0), Ops));
     return;
   }
-  case ISD::LOAD:
+  case ISD::LOAD: {
+    LoadSDNode *Load = cast<LoadSDNode>(N);
+
+    if (Load->getAddressSpace() == AMDGPUAS::CONSTANT_ADDRESS) {
+    
+      SmallVector <SDValue, 8> Ops;
+      // Ignore change.
+      for (unsigned i = 1, e = N->getNumOperands() - 1; i != e; ++i) {
+       Ops.push_back(N->getOperand(i));
+      }
+      MachineSDNode::mmo_iterator MemRefs = MF->allocateMemRefsArray(1);
+      MemRefs[0] = Load->getMemOperand();
+
+      SmallVector<MachineMemOperand*, 2> MatchedMemRefs;
+      MachineSDNode *M = CurDAG->getMachineNode(TargetOpcode::G_LOAD, SDLoc(N), N->getVTList(), Ops);
+      MatchedMemRefs.push_back(Load->getMemOperand());
+      M->setMemRefs(MemRefs, MemRefs + 1);
+      ReplaceNode(N, M);
+      return;
+    }
+  }
   case ISD::STORE: {
     N = glueCopyToM0(N);
     break;
@@ -644,10 +665,35 @@ bool AMDGPUDAGToDAGISel::SelectADDRIndirect(SDValue Addr, SDValue &Base,
   return true;
 }
 
+static bool areAllUsesGLoad(const SDNode *N) {
+
+  for (SDNode *Use : N->uses()) {
+    if (!Use->isMachineOpcode() ||
+        Use->getMachineOpcode() != TargetOpcode::G_LOAD)
+      return false;
+  }
+  return true;
+}
+
+void AMDGPUDAGToDAGISel::selectToGEP(SDNode *N) const {
+  SDLoc DL(N);
+  SDValue N1 = N->getOperand(1);
+  if (ConstantSDNode *C = dyn_cast<ConstantSDNode>(N->getOperand(1)))
+    N1 = SDValue(CurDAG->getMachineNode(TargetOpcode::G_CONSTANT, DL, N->getValueType(0), CurDAG->getTargetConstant(C->getZExtValue(), DL, N->getValueType(0))), 0);
+
+  CurDAG->SelectNodeTo(N, TargetOpcode::G_GEP, N->getValueType(0),
+                       N->getOperand(0), N1);
+}
+
 void AMDGPUDAGToDAGISel::SelectADD_SUB_I64(SDNode *N) {
   SDLoc DL(N);
   SDValue LHS = N->getOperand(0);
   SDValue RHS = N->getOperand(1);
+
+  if (areAllUsesGLoad(N)) {
+    selectToGEP(N);
+    return;
+  }
 
   unsigned Opcode = N->getOpcode();
   bool ConsumeCarry = (Opcode == ISD::ADDE || Opcode == ISD::SUBE);
