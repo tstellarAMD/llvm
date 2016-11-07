@@ -47,6 +47,7 @@ bool MachineFunctionPass::runOnFunction(Function &F) {
   MachineFunctionProperties &MFProps = MF.getProperties();
 
 #ifndef NDEBUG
+#if 0
   if (!MFProps.verifyRequiredProperties(RequiredProperties)) {
     errs() << "MachineFunctionProperties required by " << getPassName()
            << " pass are not met by function " << F.getName() << ".\n"
@@ -57,6 +58,7 @@ bool MachineFunctionPass::runOnFunction(Function &F) {
     errs() << "\n";
     llvm_unreachable("MachineFunctionProperties check failed");
   }
+#endif
 #endif
 
   bool RV = runOnMachineFunction(MF);

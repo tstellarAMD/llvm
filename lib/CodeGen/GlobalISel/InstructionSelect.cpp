@@ -79,11 +79,13 @@ bool InstructionSelect::runOnMachineFunction(MachineFunction &MF) {
   // The RegBankSelected property is already checked in the verifier. Note
   // that it has the same layering problem, but we only use inline methods so
   // end up not needing to link against the GlobalISel library.
+#if 0
   if (const LegalizerInfo *MLI = MF.getSubtarget().getLegalizerInfo())
     for (const MachineBasicBlock &MBB : MF)
       for (const MachineInstr &MI : MBB)
         if (isPreISelGenericOpcode(MI.getOpcode()) && !MLI->isLegal(MI, MRI))
           reportSelectionError(MF, &MI, "Instruction is not legal");
+#endif
 
 #endif
   // FIXME: We could introduce new blocks and will need to fix the outer loop.
