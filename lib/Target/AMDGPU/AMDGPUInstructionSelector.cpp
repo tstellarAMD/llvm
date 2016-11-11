@@ -358,14 +358,13 @@ bool AMDGPUInstructionSelector::selectSMRD(MachineInstr &I,
   return constrainSelectedInstRegOperands(*SMRD, TII, TRI, RBI);
 }
 
-#if 0
-bool AMDGPUInstructionSelector::selectMUBUF(I, AddrInfo) const {
+bool AMDGPUInstructionSelector::selectMUBUF(MachineInstr &I,
+                                            ArrayRef<GEPInfo> AddrInfo) const {
   if (!AddrInfo.empty()) {
     const GEPInfo &GEPInfo = AddrInfo[0];
 
   }
 }
-#endif
 
 bool AMDGPUInstructionSelector::selectG_LOAD(MachineInstr &I) const {
   MachineBasicBlock *BB = I.getParent();

@@ -456,6 +456,8 @@ public:
     return get(Opcode).TSFlags & SIInstrFlags::SOPK_ZEXT;
   }
 
+  static bool isLegalMUBUFImmOffset(int64_t Offset);
+
   /// \returns true if this is an s_store_dword* instruction. This is more
   /// specific than than isSMEM && mayStore.
   static bool isScalarStore(const MachineInstr &MI) {

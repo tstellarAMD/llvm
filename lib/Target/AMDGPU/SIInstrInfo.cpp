@@ -2668,6 +2668,10 @@ unsigned SIInstrInfo::readlaneVGPRToSGPR(unsigned SrcReg, MachineInstr &UseMI,
   return DstReg;
 }
 
+bool SIInstrInfo::isLegalMUBUFImmOffset(int64_t Offset) {
+  return isUInt<12>(Offset);
+}
+
 void SIInstrInfo::legalizeOperandsSMRD(MachineRegisterInfo &MRI,
                                        MachineInstr &MI) const {
 
