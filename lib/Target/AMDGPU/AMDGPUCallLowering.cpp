@@ -151,8 +151,8 @@ bool AMDGPUCallLowering::lowerFormalArguments(MachineIRBuilder &MIRBuilder,
                                              /*IsVarArg=*/false);
     bool Res =
         AssignFn(i, ValVT, ValVT, CCValAssign::Full, Flags, CCInfo);
-    assert(!Res && "Call operand has unhandled type");
-    (void)Res;
+    if (!Res)
+      return false;
   }
 
   Function::const_arg_iterator Arg = F.arg_begin();
