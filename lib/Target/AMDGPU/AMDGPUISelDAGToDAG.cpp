@@ -483,7 +483,8 @@ void AMDGPUDAGToDAGISel::Select(SDNode *N) {
   case ISD::LOAD: {
     LoadSDNode *Load = cast<LoadSDNode>(N);
 
-    if (Load->getAddressSpace() == AMDGPUAS::CONSTANT_ADDRESS) {
+    if (Load->getAddressSpace() == AMDGPUAS::CONSTANT_ADDRESS && Load->getMemoryVT().bitsGE(MVT::i32) &&
+	Subtarget->getGeneration() >= AMDGPUSubtarget::SOUTHERN_ISLANDS) {
     
       SmallVector <SDValue, 8> Ops;
       // Ignore change.

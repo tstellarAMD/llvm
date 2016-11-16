@@ -185,7 +185,7 @@ define void @scalar_xor_literal_i64(i64 addrspace(1)* %out, i64 %a) {
 }
 
 ; FUNC-LABEL: {{^}}scalar_xor_literal_multi_use_i64:
-; SI: s_load_dwordx2 s{{\[}}[[LO:[0-9]+]]:[[HI:[0-9]+]]{{\]}}, s{{\[[0-9]+:[0-9]+\]}}, {{0xb|0x2c}}
+; SI-DAG: s_load_dwordx2 s{{\[}}[[LO:[0-9]+]]:[[HI:[0-9]+]]{{\]}}, s{{\[[0-9]+:[0-9]+\]}}, {{0xb|0x2c}}
 ; SI-DAG: s_mov_b32 s[[K_HI:[0-9]+]], 0xf237b
 ; SI-DAG: s_movk_i32 s[[K_LO:[0-9]+]], 0x3039
 ; SI: s_xor_b64 s{{\[[0-9]+:[0-9]+\]}}, s{{\[[0-9]+:[0-9]+\]}}, s{{\[}}[[K_LO]]:[[K_HI]]{{\]}}
