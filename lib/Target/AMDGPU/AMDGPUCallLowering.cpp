@@ -36,8 +36,18 @@ AMDGPUCallLowering::AMDGPUCallLowering(const AMDGPUTargetLowering &TLI)
 
 bool AMDGPUCallLowering::lowerReturn(MachineIRBuilder &MIRBuilder,
                                      const Value *Val, unsigned VReg) const {
-  MIRBuilder.buildInstr(AMDGPU::S_ENDPGM);
-  return true;
+  if (!VReg) {
+    MIRBuilder.buildInstr(AMDGPU::S_ENDPGM);
+    return true;
+  }
+  return false;
+}
+
+static bool addLiveIn(MachineIRBuilder &MIRBuilder, MachineRegisterInfo &MRI,
+                      LLT Ty, unsigned PhysReg, unsigned VirtReg) {
+  MRI.addLiveIn(PhysReg, VirtReg);
+  MIRBuilder.getMBB().addLiveIn(PhysReg);
+  MIRBuilder.buildCopy(VirtReg, PhysReg);
 }
 
 unsigned AMDGPUCallLowering::lowerParameterPtr(MachineIRBuilder &MIRBuilder,
@@ -85,9 +95,63 @@ void AMDGPUCallLowering::lowerParameter(MachineIRBuilder &MIRBuilder,
   MIRBuilder.buildLoad(DstReg, PtrReg, *MMO);
 }
 
+bool AMDGPUCallLowering::lowerFormalArgumentsVS(MachineIRBuilder &MIRBuilder,
+                                                const Function &F,
+                                                ArrayRef<unsigned> VRegs) const {
+  
+  MachineFunction &MF = MIRBuilder.getMF();
+  MachineRegisterInfo &MRI = MF.getRegInfo();
+  SmallVector<CCValAssign, 16> ArgLocs;
+  CCState CCInfo(F.getCallingConv(), F.isVarArg(), MF, ArgLocs, F.getContext());
+  unsigned NumArgs = F.arg_size();
+  Function::const_arg_iterator CurOrigArg = F.arg_begin();
+  const AMDGPUTargetLowering &TLI = *getTLI<AMDGPUTargetLowering>();
+  const DataLayout &DL = F.getParent()->getDataLayout();
+
+  for (unsigned i = 0; i != NumArgs; ++i, ++CurOrigArg) {
+    MVT ValVT = TLI.getValueType(DL, CurOrigArg->getType()).getSimpleVT();
+    ISD::ArgFlagsTy Flags;
+    Flags.setOrigAlign(DL.getABITypeAlignment(CurOrigArg->getType()));
+    CCAssignFn *AssignFn =
+        TLI.CCAssignFnForCall(F.getCallingConv(), /*IsVarArg=*/false);
+    dbgs() << "i = " << i << " ValVT = " << EVT(ValVT).getEVTString() << '\n';
+    bool Res =
+        AssignFn(i, ValVT, ValVT, CCValAssign::Full, Flags, CCInfo);
+    if (Res)
+      return false;
+  }
+
+  Function::const_arg_iterator Arg = F.arg_begin();
+  for (unsigned i = 0; i != NumArgs; ++i, ++Arg) {
+    // FIXME: We should be getting DebugInfo from the arguments some how.
+    CCValAssign &VA = ArgLocs[i];
+
+    assert(VA.isRegLoc());
+
+    MVT VT = VA.getLocVT();
+
+    LLT Ty;
+    if (VT.isVector()) {
+      Ty = LLT::vector(VT.getVectorNumElements(),
+                      VT.getVectorElementType().getSizeInBits());
+    } else {
+      Ty = LLT::scalar(VT.getSizeInBits());
+    }
+    addLiveIn(MIRBuilder, MRI, Ty, VA.getLocReg(), VRegs[i]);
+  }
+  return true;
+}
+
 bool AMDGPUCallLowering::lowerFormalArguments(MachineIRBuilder &MIRBuilder,
                                               const Function &F,
                                               ArrayRef<unsigned> VRegs) const {
+
+  switch (F.getCallingConv()) {
+  default:
+    break;
+  case CallingConv::AMDGPU_VS:
+    return lowerFormalArgumentsVS(MIRBuilder, F, VRegs);
+  }
 
   MachineFunction &MF = MIRBuilder.getMF();
   const SISubtarget *Subtarget = static_cast<const SISubtarget *>(&MF.getSubtarget());

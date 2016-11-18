@@ -29,6 +29,9 @@ class AMDGPUCallLowering: public CallLowering {
   void lowerParameter(MachineIRBuilder &MIRBuilder, Type *ParamTy,
                       unsigned Offset, unsigned DstReg) const;
 
+  bool lowerFormalArgumentsVS(MachineIRBuilder &MIRBuilder, const Function &F,
+                              ArrayRef<unsigned> VRegs) const;
+
  public:
   AMDGPUCallLowering(const AMDGPUTargetLowering &TLI);
 
