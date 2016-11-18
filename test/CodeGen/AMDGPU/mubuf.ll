@@ -84,6 +84,23 @@ main_body:
   ret void
 }
 
+; Using the load.const intrinsic with an vgpr offset
+; CHECK-LABEL: {{^}}s_buffer_load:
+; CHECK: buffer_load_dword v{{[0-9+]}}, v{{[0-9+]}}, s[{{[0-9]+}}:{{[0-9]+}}], 0 offen
+; CHECK: buffer_load_dword v{{[0-9+]}}, v{{[0-9+]}}, s[{{[0-9]+}}:{{[0-9]+}}], 0 offen
+define amdgpu_ps void @s_buffer_load(<16 x i8> addrspace(2)* inreg, <16 x i8> addrspace(2)* inreg, <32 x i8> addrspace(2)* inreg, i32 inreg, <2 x i32>, <2 x i32>, <2 x i32>, <3 x i32>, <2 x i32>, <2 x i32>, <2 x i32>, float, float, float, float, float, float, float, float, float, i32 addrspace(42)* addrspace(2)* inreg %in) {
+main_body:
+  %tid = call i32 @llvm.amdgcn.mbcnt.lo(i32 -1, i32 0)
+  %20 = getelementptr <16 x i8>, <16 x i8> addrspace(2)* %0, i32 0
+  %21 = load <16 x i8>, <16 x i8> addrspace(2)* %20
+  %22 = call float @llvm.SI.load.const(<16 x i8> %21, i32 %tid)
+  %23 = load i32 addrspace(42)*, i32 addrspace(42)* addrspace(2)* %in
+  %s.buffer = call i32 @llvm.amdgcn.s.buffer.load.i32(i32 addrspace(42)* %23, i32 %tid, i1 false)
+  %s.buffer.float = bitcast i32 %s.buffer to float
+  call void @llvm.SI.export(i32 15, i32 1, i32 1, i32 0, i32 0, float %22, float %22, float %22, float %s.buffer.float)
+  ret void
+}
+
 ;;;==========================================================================;;;
 ;;; MUBUF STORE TESTS
 ;;;==========================================================================;;;
@@ -174,7 +191,12 @@ define void @store_vgpr_ptr(i32 addrspace(1)* %out) #0 {
   ret void
 }
 
+declare i32 @llvm.amdgcn.mbcnt.lo(i32, i32) #1
 declare i32 @llvm.SI.buffer.load.dword.i32.i32(<16 x i8>, i32, i32, i32, i32, i32, i32, i32, i32) #0
 declare void @llvm.SI.tbuffer.store.i32(<16 x i8>, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32, i32)
+declare float @llvm.SI.load.const(<16 x i8>, i32) #1
+declare i32 @llvm.amdgcn.s.buffer.load.i32(i32 addrspace(42)* nocapture, i32, i1)
+declare void @llvm.SI.export(i32, i32, i32, i32, i32, float, float, float, float)
 
 attributes #0 = { nounwind readonly }
+attributes #1 = { nounwind readnone }

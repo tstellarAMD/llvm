@@ -169,6 +169,7 @@ enum AddressSpaces : unsigned {
   CONSTANT_BUFFER_14 = 22,
   CONSTANT_BUFFER_15 = 23,
 
+  CONSTANT_ADDRESS_W_RSRC = 42,
   // Some places use this if the address space can't be determined.
   UNKNOWN_ADDRESS_SPACE = ~0u
 };

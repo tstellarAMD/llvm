@@ -34,6 +34,7 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/Analysis/Loads.h"
 #include "llvm/CodeGen/Analysis.h"
 #include "llvm/CodeGen/CallingConvLower.h"
 #include "llvm/CodeGen/DAGCombine.h"
@@ -431,6 +432,15 @@ bool SITargetLowering::getTgtMemIntrinsic(IntrinsicInfo &Info,
     Info.readMem = true;
     Info.writeMem = true;
     return true;
+  case Intrinsic::amdgcn_s_buffer_load:
+    Info.opc = AMDGPUISD::SBUFFER_LOAD;
+    Info.memVT = MVT::getVT(CI.getType());
+    Info.ptrVal = CI.getOperand(0);
+    Info.align = 0;
+    Info.vol = false;
+    Info.readMem = true;
+    Info.writeMem = false;
+    return true;
   default:
     return false;
   }
@@ -508,6 +518,7 @@ bool SITargetLowering::isLegalAddressingMode(const DataLayout &DL,
 
     return isLegalMUBUFAddressingMode(AM);
 
+  case AMDGPUAS::CONSTANT_ADDRESS_W_RSRC:
   case AMDGPUAS::CONSTANT_ADDRESS:
     // If the offset isn't a multiple of 4, it probably isn't going to be
     // correctly aligned.
@@ -1939,6 +1950,37 @@ bool SITargetLowering::isFMAFasterThanFMulAndFAdd(EVT VT) const {
 // Custom DAG Lowering Operations
 //===----------------------------------------------------------------------===//
 
+
+void SITargetLowering::LowerOperationWrapper(SDNode *N,
+                                             SmallVectorImpl<SDValue> &Results,
+                                             SelectionDAG &DAG) const {
+
+  if (N->getOpcode() != AMDGPUISD::SBUFFER_LOAD) {
+    TargetLowering::LowerOperationWrapper(N, Results, DAG);
+    return;
+  }
+
+  SDLoc DL(N);
+  MemSDNode *M = cast<MemSDNode>(N);
+  SDValue Ops[] = {
+    M->getOperand(0), // Chain
+    DAG.getNode(ISD::BITCAST, DL, MVT::v4i32, M->getOperand(1)), // Ptr
+    M->getOperand(2), // Offset
+    DAG.getTargetConstant(cast<ConstantSDNode>(
+      M->getOperand(3))->getZExtValue(), DL, MVT::i1) // glc
+  };
+
+  auto MMO = M->getMemOperand();
+  if (isDereferenceablePointer(MMO->getValue(), DAG.getDataLayout()))
+    MMO->setFlags(MachineMemOperand::MODereferenceable);
+
+  SDValue LD = DAG.getMemIntrinsicNode(AMDGPUISD::SBUFFER_LOAD, DL,
+                                       M->getVTList(), Ops, M->getMemoryVT(),
+                                       M->getMemOperand());
+  Results.push_back(LD);
+  Results.push_back(LD.getValue(1));
+}
+
 SDValue SITargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
   switch (Op.getOpcode()) {
   default: return AMDGPUTargetLowering::LowerOperation(Op, DAG);
@@ -2643,8 +2685,10 @@ SDValue SITargetLowering::LowerINTRINSIC_WO_CHAIN(SDValue Op,
       TRI->getPreloadedValue(MF, SIRegisterInfo::WORKITEM_ID_Z), VT);
   case AMDGPUIntrinsic::SI_load_const: {
     SDValue Ops[] = {
-      Op.getOperand(1),
-      Op.getOperand(2)
+      DAG.getEntryNode(), // Chain
+      Op.getOperand(1), // Ptr
+      Op.getOperand(2), // Offset
+      DAG.getTargetConstant(0, DL, MVT::i1) // glc
     };
 
     MachineMemOperand *MMO = MF.getMachineMemOperand(
@@ -2652,8 +2696,16 @@ SDValue SITargetLowering::LowerINTRINSIC_WO_CHAIN(SDValue Op,
         MachineMemOperand::MOLoad | MachineMemOperand::MODereferenceable |
             MachineMemOperand::MOInvariant,
         VT.getStoreSize(), 4);
-    return DAG.getMemIntrinsicNode(AMDGPUISD::LOAD_CONSTANT, DL,
-                                   Op->getVTList(), Ops, VT, MMO);
+    SDVTList VTList = DAG.getVTList(MVT::i32, MVT::Other);
+    SDValue Load = DAG.getMemIntrinsicNode(AMDGPUISD::SBUFFER_LOAD, DL,
+                                           VTList, Ops, MVT::i32, MMO);
+
+    SDValue MergeOps[] = {
+      DAG.getNode(ISD::BITCAST, DL, MVT::f32, Load),
+      Load.getValue(1)
+    };
+
+    return DAG.getMergeValues(MergeOps, DL);
   }
   case AMDGPUIntrinsic::amdgcn_fdiv_fast:
     return lowerFDIV_FAST(Op, DAG);

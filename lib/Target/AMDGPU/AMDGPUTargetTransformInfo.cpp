@@ -84,6 +84,7 @@ unsigned AMDGPUTTIImpl::getLoadStoreVecRegBitWidth(unsigned AddrSpace) const {
   switch (AddrSpace) {
   case AMDGPUAS::GLOBAL_ADDRESS:
   case AMDGPUAS::CONSTANT_ADDRESS:
+  case AMDGPUAS::CONSTANT_ADDRESS_W_RSRC:
   case AMDGPUAS::FLAT_ADDRESS:
     return 128;
   case AMDGPUAS::LOCAL_ADDRESS:
@@ -340,4 +341,37 @@ bool AMDGPUTTIImpl::isSourceOfDivergence(const Value *V) const {
     return true;
 
   return false;
+}
+
+bool AMDGPUTTIImpl::getTgtMemIntrinsic(IntrinsicInst *Inst,
+                                      MemIntrinsicInfo &Info) {
+  IRBuilder<> Builder(Inst);
+  switch (Inst->getIntrinsicID()) {
+  default:
+    return false;
+  case Intrinsic::amdgcn_s_buffer_load:
+    Info.ReadMem = true;
+    Info.WriteMem = false;
+    Info.IsSimple = true;
+    Info.NumMemRefs = 1;
+
+    // We can only set this if the intrinsic is functionally equivalent to a
+    // load/store.
+    if (auto Offset = dyn_cast<ConstantInt>(Inst->getArgOperand(1))) {
+      if (Offset->isZero() &&
+          static_cast<ConstantInt*>(Inst->getArgOperand(2))->isZero()) {
+        Info.PtrVal = Inst->getArgOperand(0);
+      }
+    }
+    break;
+  }
+  return true;
+}
+
+Value *AMDGPUTTIImpl::getOrCreateResultFromMemIntrinsic(IntrinsicInst *Inst,
+                                                        Type *ExpectedType) {
+  if (Inst->getType() == ExpectedType)
+    return Inst;
+
+  return nullptr;
 }

@@ -102,6 +102,12 @@ public:
   }
 
   unsigned getVectorSplitCost() { return 0; }
+
+  bool getTgtMemIntrinsic(IntrinsicInst *Inst, MemIntrinsicInfo &Info);
+
+  Value *getOrCreateResultFromMemIntrinsic(IntrinsicInst *Inst,
+                                           Type *ExpectedType);
+
 };
 
 } // end namespace llvm

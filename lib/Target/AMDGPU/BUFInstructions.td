@@ -713,8 +713,8 @@ def : Pat<
 
 // Offset in an 32-bit VGPR
 def : Pat <
-  (SIload_constant v4i32:$sbase, i32:$voff),
-  (BUFFER_LOAD_DWORD_OFFEN $voff, $sbase, (i32 0), 0, 0, 0, 0)
+  (i32 (SIsbuffer_load v4i32:$sbase, i32:$offset, i1:$glc)),
+  (BUFFER_LOAD_DWORD_OFFEN $offset, $sbase, (i32 0), 0, (as_i1imm $glc), 0, 0)
 >;
 
 

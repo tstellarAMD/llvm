@@ -416,6 +416,14 @@ class AMDGPUBufferLoad : Intrinsic <
 def int_amdgcn_buffer_load_format : AMDGPUBufferLoad;
 def int_amdgcn_buffer_load : AMDGPUBufferLoad;
 
+
+def int_amdgcn_s_buffer_load : Intrinsic <
+  [llvm_anyint_ty],
+  [LLVMQualPointerType<LLVMMatchType<0>, 42>,
+   llvm_i32_ty, // byte offset
+   llvm_i1_ty], // glc
+  [IntrReadMem, IntrArgMemOnly, NoCapture<0>]>;
+
 class AMDGPUBufferStore : Intrinsic <
   [],
   [llvm_anyfloat_ty,  // vdata(VGPR) -- can currently only select f32, v2f32, v4f32

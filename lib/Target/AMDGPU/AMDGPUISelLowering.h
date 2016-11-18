@@ -340,6 +340,7 @@ enum NodeType : unsigned {
   ATOMIC_DEC,
   BUFFER_LOAD,
   BUFFER_LOAD_FORMAT,
+  SBUFFER_LOAD,
   LAST_AMDGPU_ISD_NUMBER
 };
 
