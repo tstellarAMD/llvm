@@ -160,6 +160,11 @@ bool EEVT::TypeSet::MergeInTypeInfo(const EEVT::TypeSet &InVT, TreePattern &TP){
     return true;
   }
 
+  // Do nowthing if we are merging MVT::Any
+  if (InVT.TypeVec[0] == MVT::Any) {
+    return false;
+  }
+
   assert(!TypeVec.empty() && !InVT.TypeVec.empty() && "No unknowns");
 
   // Handle the abstract cases, seeing if we can resolve them better.
