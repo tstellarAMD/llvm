@@ -15,8 +15,16 @@ def MUBUFScratch : ComplexPattern<i64, 4, "SelectMUBUFScratch">;
 def MUBUFOffset : ComplexPattern<i64, 6, "SelectMUBUFOffset">;
 def MUBUFOffsetNoGLC : ComplexPattern<i64, 3, "SelectMUBUFOffset">;
 def MUBUFOffsetAtomic : ComplexPattern<i64, 4, "SelectMUBUFOffset">;
-def MUBUFIntrinsicOffset : ComplexPattern<i32, 2, "SelectMUBUFIntrinsicOffset">;
-def MUBUFIntrinsicVOffset : ComplexPattern<i32, 3, "SelectMUBUFIntrinsicVOffset">;
+def MUBUFIntrinsicOffset : ComplexPattern<i32, 2, "SelectMUBUFIntrinsicOffset",
+                                          [], [SDNPWantParent]>;
+def MUBUFIntrinsicVOffset : ComplexPattern<i32, 3, "SelectMUBUFIntrinsicVOffset",
+                                           [], [SDNPWantParent]>;
+def MUBUFIntrinsicOffsetNoSOff : ComplexPattern<
+  i32, 1, "SelectMUBUFIntrinsicOffsetNoSOff", [], [SDNPWantParent]
+>;
+def MUBUFIntrinsicVOffsetNoSOff : ComplexPattern<
+  i32, 2, "SelectMUBUFIntrinsicVOffsetNoSOff", [], [SDNPWantParent]
+>;
 
 class MubufLoad <SDPatternOperator op> : PatFrag <
   (ops node:$ptr), (op node:$ptr), [{
@@ -726,7 +734,15 @@ multiclass MUBUF_LoadIntrinsicPat<SDPatternOperator name, ValueType vt,
                                   string opcode> {
   def : Pat<
     (vt (name v4i32:$rsrc, 0,
-              (MUBUFIntrinsicOffset i32:$soffset, i16:$offset),
+              (MUBUFIntrinsicOffset i32:$soffset, i16:$offset), 0,
+              imm:$glc, imm:$slc)),
+    (!cast<MUBUF_Pseudo>(opcode # _OFFSET) $rsrc, $soffset, (as_i16imm $offset),
+      (as_i1imm $glc), (as_i1imm $slc), 0)
+  >;
+
+  def : Pat<
+    (vt (name v4i32:$rsrc, 0,
+              (MUBUFIntrinsicOffsetNoSOff i16:$offset), i32:$soffset,
               imm:$glc, imm:$slc)),
     (!cast<MUBUF_Pseudo>(opcode # _OFFSET) $rsrc, $soffset, (as_i16imm $offset),
       (as_i1imm $glc), (as_i1imm $slc), 0)
@@ -734,7 +750,15 @@ multiclass MUBUF_LoadIntrinsicPat<SDPatternOperator name, ValueType vt,
 
   def : Pat<
     (vt (name v4i32:$rsrc, i32:$vindex,
-              (MUBUFIntrinsicOffset i32:$soffset, i16:$offset),
+              (MUBUFIntrinsicOffset i32:$soffset, i16:$offset), 0,
+              imm:$glc, imm:$slc)),
+    (!cast<MUBUF_Pseudo>(opcode # _IDXEN) $vindex, $rsrc, $soffset, (as_i16imm $offset),
+      (as_i1imm $glc), (as_i1imm $slc), 0)
+  >;
+
+  def : Pat<
+    (vt (name v4i32:$rsrc, i32:$vindex,
+              (MUBUFIntrinsicOffsetNoSOff i16:$offset), i32:$soffset,
               imm:$glc, imm:$slc)),
     (!cast<MUBUF_Pseudo>(opcode # _IDXEN) $vindex, $rsrc, $soffset, (as_i16imm $offset),
       (as_i1imm $glc), (as_i1imm $slc), 0)
@@ -742,7 +766,15 @@ multiclass MUBUF_LoadIntrinsicPat<SDPatternOperator name, ValueType vt,
 
   def : Pat<
     (vt (name v4i32:$rsrc, 0,
-              (MUBUFIntrinsicVOffset i32:$soffset, i16:$offset, i32:$voffset),
+              (MUBUFIntrinsicVOffset i32:$soffset, i16:$offset, i32:$voffset), 0,
+              imm:$glc, imm:$slc)),
+    (!cast<MUBUF_Pseudo>(opcode # _OFFEN) $voffset, $rsrc, $soffset, (as_i16imm $offset),
+      (as_i1imm $glc), (as_i1imm $slc), 0)
+  >;
+
+  def : Pat<
+    (vt (name v4i32:$rsrc, 0,
+              (MUBUFIntrinsicVOffsetNoSOff i16:$offset, i32:$voffset), i32:$soffset,
               imm:$glc, imm:$slc)),
     (!cast<MUBUF_Pseudo>(opcode # _OFFEN) $voffset, $rsrc, $soffset, (as_i16imm $offset),
       (as_i1imm $glc), (as_i1imm $slc), 0)
@@ -750,11 +782,27 @@ multiclass MUBUF_LoadIntrinsicPat<SDPatternOperator name, ValueType vt,
 
   def : Pat<
     (vt (name v4i32:$rsrc, i32:$vindex,
-              (MUBUFIntrinsicVOffset i32:$soffset, i16:$offset, i32:$voffset),
+              (MUBUFIntrinsicVOffset i32:$soffset, i16:$offset, i32:$voffset), 0,
               imm:$glc, imm:$slc)),
     (!cast<MUBUF_Pseudo>(opcode # _BOTHEN)
       (REG_SEQUENCE VReg_64, $vindex, sub0, $voffset, sub1),
       $rsrc, $soffset, (as_i16imm $offset),
+      (as_i1imm $glc), (as_i1imm $slc), 0)
+  >;
+
+  def : Pat<
+    (vt (name v4i32:$rsrc, i32:$vindex,
+              (MUBUFIntrinsicVOffsetNoSOff i16:$offset, i32:$voffset), i32:$soffset,
+              imm:$glc, imm:$slc)),
+    (!cast<MUBUF_Pseudo>(opcode # _BOTHEN)
+      (REG_SEQUENCE VReg_64, $vindex, sub0, $voffset, sub1),
+      $rsrc, $soffset, (as_i16imm $offset),
+      (as_i1imm $glc), (as_i1imm $slc), 0)
+  >;
+
+  def : Pat<
+    (vt (name v4i32:$rsrc, 0, i32:$voffset, i32:$soffset, imm:$glc, imm:$slc)),
+    (!cast<MUBUF_Pseudo>(opcode # _OFFEN) $voffset, $rsrc, $soffset, 0,
       (as_i1imm $glc), (as_i1imm $slc), 0)
   >;
 }

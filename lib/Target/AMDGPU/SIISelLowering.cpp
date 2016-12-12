@@ -441,6 +441,24 @@ bool SITargetLowering::getTgtMemIntrinsic(IntrinsicInfo &Info,
     Info.readMem = true;
     Info.writeMem = false;
     return true;
+  case Intrinsic::amdgcn_buffer_load_ptr:
+    Info.opc = AMDGPUISD::BUFFER_LOAD;
+    Info.memVT = MVT::getVT(CI.getType());
+    Info.ptrVal = CI.getOperand(0);
+    Info.align = 0;
+    Info.vol = false;
+    Info.readMem = true;
+    Info.writeMem = false;
+    return true;
+  case Intrinsic::amdgcn_buffer_load_format_ptr:
+    Info.opc = AMDGPUISD::BUFFER_LOAD_FORMAT;
+    Info.memVT = MVT::getVT(CI.getType());
+    Info.ptrVal = CI.getOperand(0);
+    Info.align = 0;
+    Info.vol = false;
+    Info.readMem = true;
+    Info.writeMem = false;
+    return true;
   default:
     return false;
   }
@@ -1955,30 +1973,59 @@ void SITargetLowering::LowerOperationWrapper(SDNode *N,
                                              SmallVectorImpl<SDValue> &Results,
                                              SelectionDAG &DAG) const {
 
-  if (N->getOpcode() != AMDGPUISD::SBUFFER_LOAD) {
+  SDLoc DL(N);
+  switch (N->getOpcode()) {
+  default:
     TargetLowering::LowerOperationWrapper(N, Results, DAG);
     return;
+
+  case AMDGPUISD::SBUFFER_LOAD: {
+    MemSDNode *M = cast<MemSDNode>(N);
+    SDValue Ops[] = {
+      M->getOperand(0), // Chain
+      DAG.getNode(ISD::BITCAST, DL, MVT::v4i32, M->getOperand(1)), // Ptr
+      M->getOperand(2), // Offset
+      DAG.getTargetConstant(cast<ConstantSDNode>(
+        M->getOperand(3))->getZExtValue(), DL, MVT::i1) // glc
+    };
+
+    auto MMO = M->getMemOperand();
+    if (isDereferenceablePointer(MMO->getValue(), DAG.getDataLayout()))
+      MMO->setFlags(MachineMemOperand::MODereferenceable);
+
+    SDValue LD = DAG.getMemIntrinsicNode(AMDGPUISD::SBUFFER_LOAD, DL,
+                                         M->getVTList(), Ops, M->getMemoryVT(),
+                                         M->getMemOperand());
+    Results.push_back(LD);
+    Results.push_back(LD.getValue(1));
+    break;
   }
 
-  SDLoc DL(N);
-  MemSDNode *M = cast<MemSDNode>(N);
-  SDValue Ops[] = {
-    M->getOperand(0), // Chain
-    DAG.getNode(ISD::BITCAST, DL, MVT::v4i32, M->getOperand(1)), // Ptr
-    M->getOperand(2), // Offset
-    DAG.getTargetConstant(cast<ConstantSDNode>(
-      M->getOperand(3))->getZExtValue(), DL, MVT::i1) // glc
-  };
+  case AMDGPUISD::BUFFER_LOAD:
+  case AMDGPUISD::BUFFER_LOAD_FORMAT: {
+    SDValue Ops[] = {
+      N->getOperand(0), // Chain
+      DAG.getNode(ISD::BITCAST, DL, MVT::v4i32, N->getOperand(1)), // Ptr
+      N->getOperand(2), // vindex
+      N->getOperand(3), // offset
+      N->getOperand(4), // soffset
+      N->getOperand(5), // glc
+      N->getOperand(6)  // slc
+    };
 
-  auto MMO = M->getMemOperand();
-  if (isDereferenceablePointer(MMO->getValue(), DAG.getDataLayout()))
-    MMO->setFlags(MachineMemOperand::MODereferenceable);
+    MemSDNode *M = cast<MemSDNode>(N);
+    auto MMO = M->getMemOperand();
+    if (isDereferenceablePointer(MMO->getValue(), DAG.getDataLayout()))
+      MMO->setFlags(MachineMemOperand::MODereferenceable);
 
-  SDValue LD = DAG.getMemIntrinsicNode(AMDGPUISD::SBUFFER_LOAD, DL,
-                                       M->getVTList(), Ops, M->getMemoryVT(),
-                                       M->getMemOperand());
-  Results.push_back(LD);
-  Results.push_back(LD.getValue(1));
+    SDValue LD = DAG.getMemIntrinsicNode(N->getOpcode(), DL, M->getVTList(),
+                                         Ops, M->getMemoryVT(),
+                                         M->getMemOperand());
+    Results.push_back(LD);
+    Results.push_back(LD.getValue(1));
+    break;
+  }
+  }
 }
 
 SDValue SITargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
@@ -2887,6 +2934,7 @@ SDValue SITargetLowering::LowerINTRINSIC_W_CHAIN(SDValue Op,
       Op.getOperand(2), // rsrc
       Op.getOperand(3), // vindex
       Op.getOperand(4), // offset
+      DAG.getConstant(0, DL, MVT::i32), // soffset
       Op.getOperand(5), // glc
       Op.getOperand(6)  // slc
     };

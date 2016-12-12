@@ -53,13 +53,14 @@ def SItbuffer_store : SDNode<"AMDGPUISD::TBUFFER_STORE_FORMAT",
   [SDNPMayStore, SDNPMemOperand, SDNPHasChain]
 >;
 
-def SDTBufferLoad : SDTypeProfile<1, 5,
+def SDTBufferLoad : SDTypeProfile<1, 6,
     [                    // vdata
      SDTCisVT<1, v4i32>, // rsrc
      SDTCisVT<2, i32>,   // vindex
      SDTCisVT<3, i32>,   // offset
-     SDTCisVT<4, i1>,    // glc
-     SDTCisVT<5, i1>]>;  // slc
+     SDTCisVT<4, i32>,   // soffset
+     SDTCisVT<5, i1>,    // glc
+     SDTCisVT<6, i1>]>;  // slc
 
 def SIbuffer_load : SDNode <"AMDGPUISD::BUFFER_LOAD", SDTBufferLoad,
                             [SDNPMemOperand, SDNPHasChain, SDNPMayLoad]>;

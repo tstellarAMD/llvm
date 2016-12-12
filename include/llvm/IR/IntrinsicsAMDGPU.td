@@ -416,6 +416,17 @@ class AMDGPUBufferLoad : Intrinsic <
 def int_amdgcn_buffer_load_format : AMDGPUBufferLoad;
 def int_amdgcn_buffer_load : AMDGPUBufferLoad;
 
+class AMDGPUBufferLoadPtr : Intrinsic <
+  [llvm_anyfloat_ty],
+  [LLVMQualPointerType<LLVMMatchType<0>, 41>,
+   llvm_i32_ty,       // vindex(VGPR)
+   llvm_i32_ty,       // offset(VGPR/imm)
+   llvm_i32_ty,       // soffset(SGPR)
+   llvm_i1_ty,        // glc(imm)
+   llvm_i1_ty],       // slc(imm)
+  [IntrReadMem, IntrArgMemOnly, NoCapture<0>]>;
+def int_amdgcn_buffer_load_format_ptr : AMDGPUBufferLoadPtr;
+def int_amdgcn_buffer_load_ptr : AMDGPUBufferLoadPtr;
 
 def int_amdgcn_s_buffer_load : Intrinsic <
   [llvm_anyint_ty],
