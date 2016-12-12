@@ -459,6 +459,15 @@ bool SITargetLowering::getTgtMemIntrinsic(IntrinsicInfo &Info,
     Info.readMem = true;
     Info.writeMem = false;
     return true;
+  case Intrinsic::amdgcn_tbuffer_store_format:
+    Info.opc = AMDGPUISD::TBUFFER_STORE_FORMAT_PTR;
+    Info.memVT = MVT::getVT(CI.getOperand(0)->getType());
+    Info.ptrVal = CI.getOperand(1);
+    Info.align = 0;
+    Info.vol = false;
+    Info.readMem = false;
+    Info.writeMem = true;
+    return true;
   default:
     return false;
   }
@@ -2023,6 +2032,33 @@ void SITargetLowering::LowerOperationWrapper(SDNode *N,
                                          M->getMemOperand());
     Results.push_back(LD);
     Results.push_back(LD.getValue(1));
+    break;
+  }
+
+  case AMDGPUISD::TBUFFER_STORE_FORMAT_PTR: {
+
+    SDValue Ops[] = {
+      N->getOperand(0), // Chain
+      N->getOperand(1), // vdata
+      DAG.getNode(ISD::BITCAST, DL, MVT::v4i32, N->getOperand(2)), // rsrc
+      N->getOperand(3), // vindex
+      N->getOperand(4), // offset
+      N->getOperand(5), // soffset
+      N->getOperand(6), // dfmt
+      N->getOperand(7), // nfmt
+      N->getOperand(8), // glc
+      N->getOperand(9)  // slc
+    };
+
+    auto *M = cast<MemSDNode>(N);
+    auto MMO = M->getMemOperand();
+    if (isDereferenceablePointer(MMO->getValue(), DAG.getDataLayout()))
+      MMO->setFlags(MachineMemOperand::MODereferenceable);
+
+    SDValue ST = DAG.getMemIntrinsicNode(N->getOpcode(), DL, M->getVTList(),
+                                         Ops, M->getMemoryVT(),
+                                         M->getMemOperand());
+    Results.push_back(ST);
     break;
   }
   }

@@ -1127,7 +1127,33 @@ def : MUBUFScratchStorePat <BUFFER_STORE_DWORDX4_OFFEN, v4i32, store_private>;
 //===----------------------------------------------------------------------===//
 
 // TBUFFER_STORE_FORMAT_*, addr64=0
-class MTBUF_StoreResource <ValueType vt, int num_channels, MTBUF_Pseudo opcode> : Pat<
+multiclass MTBUF_StoreResource <ValueType vt, int num_channels, MTBUF_Pseudo opcode> {
+
+def : Pat <
+  (SItbuffer_store v4i32:$rsrc, vt:$vdata, num_channels,
+                   (MUBUFIntrinsicOffset i32:$soffset, i16:$offset),
+                   0 /* soffset */, 0 /* inst_offset */,
+                   imm:$dfmt, imm:$nfmt, 1 /* offen */, 0 /* idxen */,
+                   imm:$glc, imm:$slc, imm:$tfe),
+  (opcode
+    $vdata, (as_i16imm $offset), 0 /* offsen */, 0 /* idxen */,
+    (as_i1imm $glc), 0, (as_i8imm $dfmt), (as_i8imm $nfmt),
+    (i32 0) /* vaddr */, $rsrc, (as_i1imm $slc), (as_i1imm $tfe), $soffset)
+>;
+
+def : Pat <
+  (SItbuffer_store v4i32:$rsrc, vt:$vdata, num_channels,
+                   (MUBUFIntrinsicOffsetNoSOff i16:$offset),
+                   i32:$soffset, 0 /* inst_offset */,
+                   imm:$dfmt, imm:$nfmt, 1 /* offen */, 0 /* idxen */,
+                   imm:$glc, imm:$slc, imm:$tfe),
+  (opcode
+    $vdata, (as_i16imm $offset), 0 /* offen */, 0 /* idxen */,
+    (as_i1imm $glc), 0, (as_i8imm $dfmt), (as_i8imm $nfmt),
+    (i32 (IMPLICIT_DEF)) /* vaddr */, $rsrc, (as_i1imm $slc), (as_i1imm $tfe), $soffset)
+>;
+
+def : Pat <
   (SItbuffer_store v4i32:$rsrc, vt:$vdata, num_channels, i32:$vaddr,
                    i32:$soffset, imm:$inst_offset, imm:$dfmt,
                    imm:$nfmt, imm:$offen, imm:$idxen,
@@ -1138,10 +1164,12 @@ class MTBUF_StoreResource <ValueType vt, int num_channels, MTBUF_Pseudo opcode> 
     (as_i1imm $slc), (as_i1imm $tfe), $soffset)
 >;
 
-def : MTBUF_StoreResource <i32, 1, TBUFFER_STORE_FORMAT_X>;
-def : MTBUF_StoreResource <v2i32, 2, TBUFFER_STORE_FORMAT_XY>;
-def : MTBUF_StoreResource <v4i32, 3, TBUFFER_STORE_FORMAT_XYZ>;
-def : MTBUF_StoreResource <v4i32, 4, TBUFFER_STORE_FORMAT_XYZW>;
+}
+
+defm : MTBUF_StoreResource <i32, 1, TBUFFER_STORE_FORMAT_X>;
+defm : MTBUF_StoreResource <v2i32, 2, TBUFFER_STORE_FORMAT_XY>;
+defm : MTBUF_StoreResource <v4i32, 3, TBUFFER_STORE_FORMAT_XYZ>;
+defm : MTBUF_StoreResource <v4i32, 4, TBUFFER_STORE_FORMAT_XYZW>;
 
 } // End let Predicates = [isGCN]
 

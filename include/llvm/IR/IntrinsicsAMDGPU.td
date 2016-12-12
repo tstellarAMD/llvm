@@ -475,6 +475,19 @@ def int_amdgcn_buffer_atomic_cmpswap : Intrinsic<
    llvm_i1_ty],       // slc(imm)
   []>;
 
+def int_amdgcn_tbuffer_store_format : Intrinsic <
+  [],
+  [llvm_anyint_ty, // vdata
+   LLVMQualPointerType<LLVMMatchType<0>, 41>, // rsrc
+   llvm_i32_ty,    // vindex (VGPR)
+   llvm_i32_ty,    // offset (VGPR/imm)
+   llvm_i32_ty,    // soffset (SGPR)
+   llvm_i32_ty,    // dfmt
+   llvm_i32_ty,    // nfmt
+   llvm_i1_ty,     // glc
+   llvm_i1_ty],    // slc
+   [IntrWriteMem, IntrArgMemOnly, NoCapture<1>]>;
+
 // Uses that do not set the done bit should set IntrWriteMem on the
 // call site.
 def int_amdgcn_exp : Intrinsic <[], [
