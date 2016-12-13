@@ -1141,7 +1141,7 @@ bool AMDGPUDAGToDAGISel::SelectMUBUFConstant(SDValue Constant,
       Subtarget->getGeneration() <= AMDGPUSubtarget::SEA_ISLANDS)
     return false;
 
-  ImmOffset = CurDAG->getTargetConstant(Imm, DL, MVT::i16);
+  ImmOffset = CurDAG->getConstant(Imm, DL, MVT::i16);
 
   if (Overflow <= 64)
     SOffset = CurDAG->getTargetConstant(Overflow, DL, MVT::i32);
@@ -1192,7 +1192,7 @@ bool AMDGPUDAGToDAGISel::SelectMUBUFIntrinsicVOffset(SDValue Offset,
   }
 
   SOffset = CurDAG->getTargetConstant(0, DL, MVT::i32);
-  ImmOffset = CurDAG->getTargetConstant(0, DL, MVT::i16);
+  ImmOffset = CurDAG->getConstant(0, DL, MVT::i16);
   VOffset = Offset;
 
   return true;
