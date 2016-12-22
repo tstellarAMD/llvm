@@ -43,7 +43,7 @@ bool AMDGPUCallLowering::lowerReturn(MachineIRBuilder &MIRBuilder,
   return false;
 }
 
-static bool addLiveIn(MachineIRBuilder &MIRBuilder, MachineRegisterInfo &MRI,
+static void addLiveIn(MachineIRBuilder &MIRBuilder, MachineRegisterInfo &MRI,
                       LLT Ty, unsigned PhysReg, unsigned VirtReg) {
   MRI.addLiveIn(PhysReg, VirtReg);
   MIRBuilder.getMBB().addLiveIn(PhysReg);
@@ -112,9 +112,8 @@ bool AMDGPUCallLowering::lowerFormalArgumentsVS(MachineIRBuilder &MIRBuilder,
     MVT ValVT = TLI.getValueType(DL, CurOrigArg->getType()).getSimpleVT();
     ISD::ArgFlagsTy Flags;
     Flags.setOrigAlign(DL.getABITypeAlignment(CurOrigArg->getType()));
-    CCAssignFn *AssignFn =
-        TLI.CCAssignFnForCall(F.getCallingConv(), /*IsVarArg=*/false);
-    dbgs() << "i = " << i << " ValVT = " << EVT(ValVT).getEVTString() << '\n';
+    CCAssignFn *AssignFn = CCAssignFnForCall(F.getCallingConv(),
+                                             /*IsVarArg=*/false);
     bool Res =
         AssignFn(i, ValVT, ValVT, CCValAssign::Full, Flags, CCInfo);
     if (Res)
