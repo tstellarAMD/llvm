@@ -41,7 +41,42 @@ bool AMDGPUCallLowering::lowerReturn(MachineIRBuilder &MIRBuilder,
     MIRBuilder.buildInstr(AMDGPU::S_ENDPGM);
     return true;
   }
-  return false;
+  
+  MachineFunction &MF = MIRBuilder.getMF();
+  SIMachineFunctionInfo *Info = MF.getInfo<SIMachineFunctionInfo>();
+  Info->setIfReturnsVoid(true);
+ 
+  MachineRegisterInfo &MRI = MF.getRegInfo();
+  const Function &F = *MF.getFunction();
+  auto &DL = F.getParent()->getDataLayout();
+
+  SmallVector<ArgInfo, 8> SplitArgs;
+  SmallVector<EVT, 8> SplitVTs;
+  SmallVector<uint64_t, 8> Offsets;
+  ArgInfo OrigArg{VReg, Val->getType()};
+  setArgFlags(OrigArg, AttributeSet::ReturnIndex, DL, F);
+  ComputeValueVTs(*getTLI<AMDGPUTargetLowering>(), DL, OrigArg.Ty, SplitVTs,
+                  &Offsets, 0);
+
+  LLVMContext &Ctx = OrigArg.Ty->getContext();
+  for (auto SplitVT : SplitVTs) {
+    Type *SplitTy = SplitVT.getTypeForEVT(Ctx);
+    SplitArgs.push_back(
+        ArgInfo{MRI.createGenericVirtualRegister(LLT{*SplitTy, DL}), SplitTy,
+                OrigArg.Flags});
+  }
+
+  SmallVector<uint64_t, 8> BitOffsets;
+  for (auto Offset : Offsets)
+    BitOffsets.push_back(Offset * 8);
+
+  SmallVector<unsigned, 8> SplitRegs;
+  for (auto I = SplitArgs.begin(); I != SplitArgs.end(); ++I)
+    SplitRegs.push_back(I->Reg);
+
+  MIRBuilder.buildExtract(SplitRegs, BitOffsets, VReg); 
+ 
+  return true;
 }
 
 static void addLiveIn(MachineIRBuilder &MIRBuilder, MachineRegisterInfo &MRI,
