@@ -406,6 +406,33 @@ LegalizerHelper::lower(MachineInstr &MI, unsigned TypeIdx, LLT Ty) {
     MI.eraseFromParent();
     return Legalized;
   }
+  case TargetOpcode::G_INSERT: {
+    SmallVector<uint64_t, 8> Offsets;
+    SmallVector<unsigned, 8> Regs;
+    unsigned StructReg = MI.getOperand(1).getReg();
+    LLT StructTy = MRI.getType(StructReg);
+    unsigned StructSize = StructTy.getSizeInBits();
+    unsigned InsertReg = MI.getOperand(2).getReg();
+    LLT InsertTy = MRI.getType(InsertReg);
+    unsigned InsertSize = InsertTy.getSizeInBits();
+		unsigned InsertPart = (StructSize / InsertSize) - 1;
+
+    if (StructSize % InsertSize != 0)
+      return UnableToLegalize;
+
+    unsigned Parts = StructSize / InsertSize;
+    for (unsigned i = 0; i < Parts; ++i) {
+      Offsets.push_back(i * InsertSize);
+      Regs.push_back(MRI.createGenericVirtualRegister(InsertTy));
+    }
+
+    MIRBuilder.buildExtract(Regs, Offsets, StructReg);
+    Regs[InsertPart] = InsertReg;
+		MIRBuilder.buildSequence(MI.getOperand(0).getReg(), Regs, Offsets);
+		MI.eraseFromParent();
+		return Legalized;
+  }
+	
   }
 }
 
