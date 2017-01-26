@@ -210,7 +210,7 @@ public:
   bool FoldImmediate(MachineInstr &UseMI, MachineInstr &DefMI, unsigned Reg,
                      MachineRegisterInfo *MRI) const final;
 
-  unsigned getMachineCSELookAheadLimit() const override { return 500; }
+  unsigned getMachineCSELookAheadLimit() const override { return 25000; }
 
   MachineInstr *convertToThreeAddress(MachineFunction::iterator &MBB,
                                       MachineInstr &MI,
