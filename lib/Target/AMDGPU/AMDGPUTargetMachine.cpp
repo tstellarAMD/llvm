@@ -442,6 +442,8 @@ void AMDGPUPassConfig::addIRPasses() {
 
   const AMDGPUTargetMachine &TM = getAMDGPUTargetMachine();
   if (TM.getOptLevel() > CodeGenOpt::None) {
+    if (EnableSROA)
+      addPass(createSROAPass());
     addPass(createAMDGPUPromoteAlloca(&TM));
 
     if (EnableSROA)

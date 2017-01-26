@@ -60,6 +60,7 @@ void AMDGPUTTIImpl::getUnrollingPreferences(Loop *L,
         // Don't use the maximum allowed value here as it will make some
         // programs way too big.
         UP.Threshold = 800;
+        UP.PartialThreshold = 1600;
       }
     }
   }
