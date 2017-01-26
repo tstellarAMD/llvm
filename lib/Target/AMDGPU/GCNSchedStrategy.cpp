@@ -229,7 +229,22 @@ SUnit *GCNMaxOccupancySchedStrategy::pickNodeBidirectional(bool &IsTopNode) {
     traceCandidate(BotCand);
   );
   SchedCandidate Cand;
-  if (TopCand.Reason == BotCand.Reason) {
+  // tryPressure will not compare pressure differences between to and
+  // bottom candidates, so we need to do this here.
+  int TopExcessInc = TopCand.RPDelta.Excess.getUnitInc();
+  int BotExcessInc = BotCand.RPDelta.Excess.getUnitInc();
+  int TopCritInc = TopCand.RPDelta.CriticalMax.getUnitInc();
+  int BotCritInc = BotCand.RPDelta.CriticalMax.getUnitInc();
+
+  if (TopExcessInc < BotExcessInc)
+    Cand = TopCand;
+  else if (BotExcessInc < TopExcessInc)
+    Cand = BotCand;
+  else if (TopCritInc < BotCritInc)
+    Cand = TopCand;
+  else if (BotCritInc < TopCritInc)
+    Cand = BotCand;
+  else if (TopCand.Reason == BotCand.Reason) {
     Cand = BotCand;
     GenericSchedulerBase::CandReason TopReason = TopCand.Reason;
     TopCand.Reason = NoCand;
@@ -258,6 +273,7 @@ SUnit *GCNMaxOccupancySchedStrategy::pickNodeBidirectional(bool &IsTopNode) {
       }
     }
   }
+
   DEBUG(
     dbgs() << "Picking: ";
     traceCandidate(Cand);
